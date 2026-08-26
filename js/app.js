@@ -927,16 +927,17 @@ function bindSongView() {
   document.getElementById('transpose-up').addEventListener('click', () => {
     if (state.transpose >= TRANSPOSE_LIMIT) return;
     state.transpose += 1;
-    updateTransposeUI();
+    updateTransposeUI({ animate: true });
   });
   document.getElementById('transpose-down').addEventListener('click', () => {
     if (state.transpose <= -TRANSPOSE_LIMIT) return;
     state.transpose -= 1;
-    updateTransposeUI();
+    updateTransposeUI({ animate: true });
   });
   document.getElementById('transpose-reset').addEventListener('click', () => {
+    if (state.transpose === 0) return;
     state.transpose = 0;
-    updateTransposeUI();
+    updateTransposeUI({ animate: true });
   });
 
   document.querySelectorAll('[data-font]').forEach(btn => {
@@ -1047,14 +1048,15 @@ function openSong(song, opts = {}) {
   }
 }
 
-function updateTransposeUI() {
+function updateTransposeUI(opts = {}) {
+  const { animate = false } = opts;
   document.getElementById('transpose-offset').textContent =
     (state.transpose > 0 ? '+' : '') + state.transpose;
   document.getElementById('transpose-up').disabled = state.transpose >= TRANSPOSE_LIMIT;
   document.getElementById('transpose-down').disabled = state.transpose <= -TRANSPOSE_LIMIT;
   const song = state.activeSong;
   document.getElementById('sv-key').textContent = song ? transposeChord(song.key, state.transpose) : '—';
-  renderLyrics();
+  renderLyrics({ animateChords: animate });
 }
 
 function transposeChord(chord, steps) {
@@ -1079,11 +1081,17 @@ function transposeSingle(token, steps) {
   return table[newIdx] + rest;
 }
 
-function renderLyrics() {
+function renderLyrics(opts = {}) {
+  const { animateChords = false } = opts;
   const container = document.getElementById('lyrics-container');
   const song = state.activeSong;
   container.innerHTML = '';
   if (!song) return;
+
+  // Running count of chord tags placed so far, used only to stagger the
+  // chord-pop animation slightly per chord (a light ripple down the
+  // page). Capped so long songs don't end up with a sluggish tail.
+  let chordAnimIndex = 0;
 
   // Group lines into sections (verses/choruses) using blank lines as
   // boundaries — the same simple convention a future song editor can
@@ -1151,6 +1159,11 @@ function renderLyrics() {
           const chordEl = document.createElement('span');
           chordEl.className = 'chord-tag';
           chordEl.textContent = transposeChord(tok.chord, state.transpose);
+          if (animateChords) {
+            chordEl.classList.add('chord-pop');
+            chordEl.style.setProperty('--chord-pop-delay', Math.min(chordAnimIndex * 12, 380) + 'ms');
+            chordAnimIndex += 1;
+          }
           wrap.appendChild(chordEl);
         } else if (tok.text) {
           const spacer = document.createElement('span');
@@ -1561,7 +1574,7 @@ function renderPlaylistView() {
   if (!pl) return;
 
   document.getElementById('pv-count').textContent = t('playlistSongCount', pl.songs.length);
-  emptyEl.textContent = t('playlistViewEmptyState');
+  emptyEl.textContent = pl.isFavorites ? t('playlistViewEmptyStateFavorites') : t('playlistViewEmptyState');
 
   listEl.innerHTML = '';
   const resolved = pl.songs

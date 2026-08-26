@@ -570,6 +570,20 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 }
 .chord-tag-spacer { height: calc(var(--chord-size) + 6px); }
 
+/* Subtle "pop" when chords change (transpose up/down/reset). Applied only
+   to the chord tags on a re-render triggered by an actual transpose
+   action — not on first opening a song — and staggered slightly per
+   chord so it reads as a light ripple down the page rather than a flash. */
+@keyframes chord-pop {
+  0%   { transform: translateY(-3px) scale(0.82); opacity: 0.35; }
+  55%  { transform: translateY(0) scale(1.1); opacity: 1; }
+  100% { transform: translateY(0) scale(1); }
+}
+.chord-tag.chord-pop {
+  animation: chord-pop 320ms cubic-bezier(.26,.8,.3,1.2) both;
+  animation-delay: var(--chord-pop-delay, 0ms);
+}
+
 .lyric-word {
   font-size: var(--lyrics-size);
   color: var(--ink);

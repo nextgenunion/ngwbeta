@@ -74,6 +74,7 @@ window.SONGBOOK_LANG.mn2 = {
   favoritesName: "Дуртай",
   playlistsEmptyState: "Одоогоор жагсаалт алга байна. + дарж шинээр үүсгэнэ үү.",
   playlistViewEmptyState: "Энэ жагсаалтад одоогоор дуу алга байна.",
+  playlistViewEmptyStateFavorites: "Танд дуртай дуу байхгүй юм уу? :(",
   playlistSongCount: (n) => `${n} дуу`,
   newPlaylistTitle: "Шинэ жагсаалт",
   renamePlaylistTitle: "Жагсаалтын нэр солих",
