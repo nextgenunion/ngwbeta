@@ -98,4 +98,7 @@ window.SONGBOOK_LANG.kr = {
   toastPlaylistsExported: "재생목록을 내보냈습니다",
   toastPlaylistsImported: "재생목록을 가져왔습니다",
   toastPlaylistsImportFailed: "파일을 가져오지 못했습니다",
+  editBtn: "편집",
+  doneBtn: "완료",
+  reorderHandle: "끌어서 순서 변경",
 };

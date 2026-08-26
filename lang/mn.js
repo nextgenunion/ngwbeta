@@ -98,4 +98,7 @@ window.SONGBOOK_LANG.mn = {
   toastPlaylistsExported: "Жагсаалтуудыг экспортлолоо",
   toastPlaylistsImported: "Жагсаалтуудыг импортлолоо",
   toastPlaylistsImportFailed: "Файлыг импортлож чадсангүй",
+  editBtn: "Засах",
+  doneBtn: "Дуусгах",
+  reorderHandle: "Дарж чирж эрэмбэлэх",
 };

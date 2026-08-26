@@ -85,7 +85,7 @@
     <span id="t-topbarAppName2">Дууны ном</span>
   </div>
 
-  <header class="song-view-header">
+  <header class="song-view-header pv-header">
     <button id="playlist-back-btn" class="icon-btn" aria-label="Back to playlists">
       <svg data-icon="back-arrow" viewBox="0 0 24 24"></svg>
     </button>
@@ -93,12 +93,12 @@
       <h2 id="pv-title"></h2>
       <p id="pv-count" class="sv-artist"></p>
     </div>
-    <button id="playlist-add-songs-btn" class="icon-btn" aria-label="Add songs">
-      <svg data-icon="plus" viewBox="0 0 24 24"></svg>
-    </button>
-    <button id="playlist-menu-btn" class="icon-btn" aria-label="Playlist options">
-      <svg data-icon="menu-kebab" viewBox="0 0 24 24"></svg>
-    </button>
+    <div class="pv-header-actions">
+      <button id="playlist-edit-btn" class="btn-pill-toggle" type="button"></button>
+      <button id="playlist-menu-btn" class="icon-btn" aria-label="Playlist options">
+        <svg data-icon="menu-kebab" viewBox="0 0 24 24"></svg>
+      </button>
+    </div>
   </header>
 
   <ul id="playlist-song-list" class="song-list"></ul>

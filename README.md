@@ -196,7 +196,7 @@ Install row in Settings explains this instead of showing a dead button.
 
 ### Updating the app later
 
-Bump `CACHE_VERSION` at the top of `service-worker.js` (e.g. `songbook-v2.0.0-beta`)
+Bump `CACHE_VERSION` at the top of `service-worker.js` (e.g. `songbook-v2.0.1-beta`)
 whenever you ship changed files. That's what tells installed devices to fetch
 the new version instead of serving the old cached copy. Also bump
 `APP_VERSION` at the top of `js/app.js` (and its mirror at the repo root,

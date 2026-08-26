@@ -1,6 +1,6 @@
 // Songbook service worker — offline-first app shell + data cache.
 // Bump CACHE_VERSION whenever shipped files change so clients pick up updates.
-const CACHE_VERSION = 'songbook-v2.0.0-beta.1';
+const CACHE_VERSION = 'songbook-v2.0.1-beta';
 
 // The core shell: without any one of these the app can't run at all, so
 // these are cached atomically — if even one fails, the whole install fails

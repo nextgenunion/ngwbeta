@@ -102,4 +102,7 @@ window.SONGBOOK_LANG.en = {
   toastPlaylistsExported: "Playlists exported",
   toastPlaylistsImported: "Playlists imported",
   toastPlaylistsImportFailed: "Couldn't import that file",
+  editBtn: "Edit",
+  doneBtn: "Done",
+  reorderHandle: "Drag to reorder",
 };

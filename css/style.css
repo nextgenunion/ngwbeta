@@ -219,7 +219,7 @@ body.nav-hidden .page-inner {
   box-shadow: var(--shadow-1);
 }
 .search-icon { width: 18px; height: 18px; fill: var(--ink-faint); flex-shrink: 0; }
-#search-input {
+#search-input, .search-field {
   width: 100%;
   border: none;
   background: transparent;
@@ -228,8 +228,21 @@ body.nav-hidden .page-inner {
   font-size: 1rem;
   color: var(--ink);
   font-family: var(--font-body);
+  -webkit-appearance: none;
+  appearance: none;
 }
-#search-input::placeholder { color: var(--ink-faint); }
+#search-input::-webkit-search-decoration,
+#search-input::-webkit-search-cancel-button,
+#search-input::-webkit-search-results-button,
+#search-input::-webkit-search-results-decoration,
+.search-field::-webkit-search-decoration,
+.search-field::-webkit-search-cancel-button,
+.search-field::-webkit-search-results-button,
+.search-field::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  display: none;
+}
+#search-input::placeholder, .search-field::placeholder { color: var(--ink-faint); }
 
 /* ---------- sort row ---------- */
 .sort-row {
@@ -378,7 +391,7 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 }
 .icon-btn svg { width: 20px; height: 20px; fill: var(--ink); }
 
-.song-view-title { min-width: 0; padding-top: 2px; }
+.song-view-title { flex: 1; min-width: 0; padding-top: 2px; }
 .sv-number {
   font-family: var(--font-mono);
   font-size: 0.78rem;
@@ -903,19 +916,59 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
 #sv-favorite-btn[aria-pressed="true"] svg { fill: var(--danger); }
 #sv-favorite-btn { margin-left: auto; }
 
-/* ---------- playlist-view empty state row-actions ---------- */
-.song-row-remove {
+/* ---------- playlist-view header ---------- */
+.pv-header-actions { display: flex; align-items: center; gap: 8px; margin-left: 12px; flex-shrink: 0; }
+.btn-pill-toggle {
   flex-shrink: 0;
-  width: 32px; height: 32px;
-  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 9px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.btn-pill-toggle[aria-pressed="true"] {
+  background: var(--accent-strong);
+  color: var(--paper);
+  border-color: var(--accent-strong);
+}
+
+/* ---------- playlist-view song rows (view mode vs. edit mode) ---------- */
+.song-row-with-remove { display: flex; align-items: center; gap: 10px; }
+.song-row-with-remove .song-row { flex: 1; padding-right: 8px; }
+.drag-handle {
+  flex-shrink: 0;
+  width: 32px; height: 44px;
   border: none;
   background: transparent;
-  display: flex; align-items: center; justify-content: center;
+  display: none; /* shown only in edit mode via .is-editing */
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+  color: var(--ink-faint);
+}
+.drag-handle svg { width: 18px; height: 18px; fill: currentColor; }
+.song-row-remove {
+  flex-shrink: 0;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: none; /* shown only in edit mode via .is-editing */
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
 }
-.song-row-remove svg { width: 17px; height: 17px; fill: var(--ink-faint); }
-.song-row-remove:active svg { fill: var(--danger); }
-.song-row.song-row-with-remove { padding-right: 8px; }
+.song-row-remove svg { width: 15px; height: 15px; fill: var(--danger); }
+#playlist-song-list.is-editing .drag-handle,
+#playlist-song-list.is-editing .song-row-remove { display: flex; }
+#playlist-song-list.is-editing .song-row { pointer-events: none; } /* rows don't open the song while editing */
+.song-row-with-remove.is-dragging { position: relative; z-index: 30; box-shadow: var(--shadow-2); }
 
 /* ---------- kebab dropdown menu ---------- */
 .kebab-menu-wrap { position: relative; }
@@ -1048,6 +1101,20 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
 .checklist-item-icon { flex-shrink: 0; color: var(--ink-faint); }
 .checklist-item.is-favorites .checklist-item-icon { color: var(--danger); }
 .checklist-item-icon svg { width: 18px; height: 18px; fill: currentColor; }
+.checklist-badge {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
 
 .modal-new-playlist-row {
   display: flex;

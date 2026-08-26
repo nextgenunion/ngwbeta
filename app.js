@@ -6,7 +6,7 @@
 // manifest — nothing here needs to change.
 // =========================================================
 
-const APP_VERSION = 'Beta v2.0.0';
+const APP_VERSION = 'Beta v2.0.1';
 
 // --- Hard update backstop -------------------------------------------------
 // Everything above (scrollRestoration, controllerchange auto-reload,
@@ -1418,8 +1418,8 @@ function renderPlaylistsList() {
 function bindPlaylistView() {
   document.getElementById('playlist-back-btn').addEventListener('click', () => history.back());
 
-  document.getElementById('playlist-add-songs-btn').addEventListener('click', () => {
-    if (state.activePlaylistId) openAddSongsModal(state.activePlaylistId);
+  document.getElementById('playlist-edit-btn').addEventListener('click', () => {
+    setPlaylistEditMode(!playlistEditMode);
   });
 
   document.getElementById('playlist-menu-btn').addEventListener('click', (e) => {
@@ -1428,6 +1428,12 @@ function bindPlaylistView() {
   });
 
   document.addEventListener('click', () => closePlaylistMenu());
+
+  // Drag-to-reorder (pointer events cover touch + mouse). Only active
+  // while playlistEditMode is on; see renderPlaylistView for handle setup.
+  document.addEventListener('pointermove', onPlaylistDragMove);
+  document.addEventListener('pointerup', onPlaylistDragEnd);
+  document.addEventListener('pointercancel', onPlaylistDragEnd);
 }
 
 let playlistMenuOpen = false;
@@ -1437,27 +1443,37 @@ function togglePlaylistMenu() {
 
 function openPlaylistMenu() {
   const pl = getPlaylist(state.activePlaylistId);
-  if (!pl || pl.isFavorites) return; // Favorites can't be renamed/deleted
+  if (!pl) return;
   closePlaylistMenu();
   const btn = document.getElementById('playlist-menu-btn');
   const wrap = document.createElement('div');
   wrap.className = 'kebab-dropdown';
   wrap.id = 'playlist-kebab-dropdown';
   wrap.innerHTML = `
+    <button type="button" id="kebab-add-songs"><svg data-icon="plus" viewBox="0 0 24 24"></svg>${escapeHtml(t('addSongsTitle'))}</button>
+    ${pl.isFavorites ? '' : `
     <button type="button" id="kebab-rename"><svg data-icon="pencil" viewBox="0 0 24 24"></svg>${escapeHtml(t('menuRename'))}</button>
     <button type="button" id="kebab-delete" class="is-danger"><svg data-icon="trash" viewBox="0 0 24 24"></svg>${escapeHtml(t('menuDelete'))}</button>
+    `}
   `;
   btn.parentElement.style.position = 'relative';
   btn.parentElement.appendChild(wrap);
   initIcons(wrap);
   playlistMenuOpen = true;
 
-  wrap.querySelector('#kebab-rename').addEventListener('click', (e) => {
+  wrap.querySelector('#kebab-add-songs').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closePlaylistMenu();
+    openAddSongsModal(state.activePlaylistId);
+  });
+  const renameBtn = wrap.querySelector('#kebab-rename');
+  if (renameBtn) renameBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     closePlaylistMenu();
     promptRenamePlaylist(state.activePlaylistId);
   });
-  wrap.querySelector('#kebab-delete').addEventListener('click', (e) => {
+  const deleteBtn = wrap.querySelector('#kebab-delete');
+  if (deleteBtn) deleteBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     closePlaylistMenu();
     confirmDeletePlaylist(state.activePlaylistId);
@@ -1471,11 +1487,22 @@ function closePlaylistMenu() {
   playlistMenuOpen = false;
 }
 
+let playlistEditMode = false;
+function setPlaylistEditMode(on) {
+  playlistEditMode = on;
+  const listEl = document.getElementById('playlist-song-list');
+  const btn = document.getElementById('playlist-edit-btn');
+  listEl.classList.toggle('is-editing', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.textContent = on ? t('doneBtn') : t('editBtn');
+}
+
 function openPlaylist(id, opts = {}) {
   const { pushHistory = true } = opts;
   const pl = getPlaylist(id);
   if (!pl) return;
   state.activePlaylistId = id;
+  setPlaylistEditMode(false); // always open a playlist fresh, not mid-edit
   renderPlaylistView();
   showPage('playlist-view', { resetScroll: true });
   if (pushHistory) {
@@ -1487,12 +1514,10 @@ function renderPlaylistView() {
   const pl = getPlaylist(state.activePlaylistId);
   const listEl = document.getElementById('playlist-song-list');
   const emptyEl = document.getElementById('playlist-view-empty-state');
-  const menuBtn = document.getElementById('playlist-menu-btn');
   if (!pl) return;
 
   document.getElementById('pv-title').textContent = playlistDisplayName(pl);
   document.getElementById('pv-count').textContent = t('playlistSongCount', pl.songs.length);
-  menuBtn.hidden = pl.isFavorites; // no rename/delete for the permanent Favorites playlist
   emptyEl.textContent = t('playlistViewEmptyState');
 
   listEl.innerHTML = '';
@@ -1503,8 +1528,19 @@ function renderPlaylistView() {
 
   resolved.forEach(({ ref, song }) => {
     const li = document.createElement('li');
+    li.className = 'song-row-with-remove';
+    li.dataset.sourceKey = ref.sourceKey;
+    li.dataset.songId = song.id;
+
+    const handle = document.createElement('button');
+    handle.type = 'button';
+    handle.className = 'drag-handle';
+    handle.setAttribute('aria-label', t('reorderHandle'));
+    handle.innerHTML = '<svg data-icon="menu-kebab" viewBox="0 0 24 24" style="transform:rotate(90deg)"></svg>';
+    handle.addEventListener('pointerdown', (e) => onPlaylistDragStart(e, li));
+
     const row = document.createElement('button');
-    row.className = 'song-row song-row-with-remove';
+    row.className = 'song-row';
     row.innerHTML = `
       <span class="song-badge">${song.number}</span>
       <span class="song-row-text">
@@ -1512,7 +1548,7 @@ function renderPlaylistView() {
         ${song.artist ? `<span class="song-row-sub">${escapeHtml(song.artist)}</span>` : ''}
       </span>
     `;
-    row.addEventListener('click', () => openSong(song, { sourceKey: ref.sourceKey }));
+    row.addEventListener('click', () => { if (!playlistEditMode) openSong(song, { sourceKey: ref.sourceKey }); });
 
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
@@ -1526,11 +1562,82 @@ function renderPlaylistView() {
       if (pl.isFavorites && state.activeSong && state.activeSong.id === ref.songId) updateFavoriteButtonUI();
     });
 
+    li.appendChild(handle);
     li.appendChild(row);
     li.appendChild(removeBtn);
     listEl.appendChild(li);
     initIcons(li);
   });
+
+  setPlaylistEditMode(playlistEditMode); // (re)apply edit-mode class/label — also keeps the Edit/Done label in sync with language changes
+}
+
+// ---------------------------------------------------------
+// Drag-to-reorder for the playlist-view list (edit mode only). Uses
+// Pointer Events so it works with touch (phones) as well as mouse.
+// ---------------------------------------------------------
+let dragLi = null;
+let dragStartY = 0;
+
+function onPlaylistDragStart(e, li) {
+  if (!playlistEditMode) return;
+  dragLi = li;
+  dragStartY = e.clientY;
+  li.classList.add('is-dragging');
+  try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  e.preventDefault();
+}
+
+function onPlaylistDragMove(e) {
+  if (!dragLi) return;
+  const dy = e.clientY - dragStartY;
+  dragLi.style.transform = `translateY(${dy}px)`;
+
+  const listEl = document.getElementById('playlist-song-list');
+  const dragRect = dragLi.getBoundingClientRect();
+  const dragCenter = dragRect.top + dragRect.height / 2;
+
+  for (const sib of Array.from(listEl.children)) {
+    if (sib === dragLi) continue;
+    const sRect = sib.getBoundingClientRect();
+    const sCenter = sRect.top + sRect.height / 2;
+    const dragIsBeforeSib = !!(dragLi.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING);
+    if (dragIsBeforeSib && dragCenter > sCenter) {
+      listEl.insertBefore(dragLi, sib.nextSibling);
+      dragStartY = e.clientY;
+      dragLi.style.transform = 'translateY(0)';
+      break;
+    }
+    if (!dragIsBeforeSib && dragCenter < sCenter) {
+      listEl.insertBefore(dragLi, sib);
+      dragStartY = e.clientY;
+      dragLi.style.transform = 'translateY(0)';
+      break;
+    }
+  }
+}
+
+function onPlaylistDragEnd() {
+  if (!dragLi) return;
+  dragLi.style.transform = '';
+  dragLi.classList.remove('is-dragging');
+  dragLi = null;
+  commitPlaylistOrderFromDom();
+}
+
+function commitPlaylistOrderFromDom() {
+  const pl = getPlaylist(state.activePlaylistId);
+  if (!pl) return;
+  const listEl = document.getElementById('playlist-song-list');
+  const newOrder = Array.from(listEl.children).map(li => ({
+    sourceKey: li.dataset.sourceKey,
+    songId: li.dataset.songId,
+  }));
+  // songId in the dataset is always a string; match loosely so numeric ids still line up.
+  pl.songs = newOrder
+    .map(ref => pl.songs.find(s => s.sourceKey === ref.sourceKey && String(s.songId) === String(ref.songId)))
+    .filter(Boolean);
+  persistPlaylists();
 }
 
 // ---------------------------------------------------------
@@ -1711,7 +1818,7 @@ function openAddSongsModal(playlistId) {
   searchWrap.className = 'search-bar modal-search';
   searchWrap.innerHTML = `
     <svg class="search-icon" data-icon="search" viewBox="0 0 24 24" aria-hidden="true"></svg>
-    <input type="search" id="add-songs-search" inputmode="search" autocomplete="off">
+    <input type="search" id="add-songs-search" class="search-field" inputmode="search" autocomplete="off">
   `;
   const list = document.createElement('ul');
   list.className = 'checklist';
@@ -1733,6 +1840,7 @@ function openAddSongsModal(playlistId) {
       item.className = 'checklist-item';
       item.setAttribute('aria-pressed', String(inIt));
       item.innerHTML = `
+        <span class="checklist-badge">${song.number}</span>
         <span style="flex:1">
           ${escapeHtml(song.title)}
           ${song.artist ? `<div class="checklist-item-sub">${escapeHtml(song.artist)}</div>` : ''}
