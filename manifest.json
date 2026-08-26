@@ -1,6 +1,6 @@
 {
-  "name": "Next Gen Worship",
-  "short_name": "NGWorship",
+  "name": "Next Gen Worship Beta",
+  "short_name": "NGWorship Beta",
   "id": "/",
   "description": "An offline-first worship songbook with smart search and chord transpose.",
   "start_url": "./",

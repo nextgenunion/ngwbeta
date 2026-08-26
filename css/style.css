@@ -163,6 +163,19 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; color: var(--ink); }
 
 button { font-family: inherit; }
 
+/* Kill the default mobile "tap highlight" flash Android/Chrome paints over
+   buttons and links while pressed — it sits on top of our own :active
+   styles (e.g. .song-row:active, .playlist-row:active) and looks like a
+   stray blue box. Our own :active/:focus-visible styles below still work
+   fine without it. */
+*, ::before, ::after {
+  -webkit-tap-highlight-color: transparent;
+}
+button, a {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* ---------- page shell ---------- */
 .page {
   /* Each page is its own fixed-viewport-size, independently scrolling box
@@ -217,6 +230,11 @@ body.nav-hidden .page-inner {
   border-radius: var(--radius-m);
   padding: 0 14px;
   box-shadow: var(--shadow-1);
+  transition: border-color .15s, box-shadow .15s;
+}
+.search-bar:focus-within {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px var(--accent-tint);
 }
 .search-icon { width: 18px; height: 18px; fill: var(--ink-faint); flex-shrink: 0; }
 #search-input, .search-field {
@@ -243,6 +261,11 @@ body.nav-hidden .page-inner {
   display: none;
 }
 #search-input::placeholder, .search-field::placeholder { color: var(--ink-faint); }
+/* .search-bar itself draws the focus highlight (border + soft ring above);
+   suppress the input's own outline so we don't get a second, square box
+   that doesn't match the pill shape. */
+#search-input:focus, .search-field:focus,
+#search-input:focus-visible, .search-field:focus-visible { outline: none; box-shadow: none; }
 
 /* ---------- sort row ---------- */
 .sort-row {
@@ -398,11 +421,14 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   color: var(--accent-strong);
   font-weight: 600;
 }
-#sv-title {
+#sv-title, #pv-title {
   font-size: 1.5rem;
   line-height: 1.2;
   margin-top: 2px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sv-artist { margin: 2px 0 0; color: var(--ink-faint); font-size: 0.9rem; }
 .sv-alt-title { margin: 2px 0 0; color: var(--ink-faint); font-size: 0.85rem; font-style: italic; }
@@ -937,7 +963,19 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
 }
 
 /* ---------- playlist-view song rows (view mode vs. edit mode) ---------- */
-.song-row-with-remove { display: flex; align-items: center; gap: 10px; }
+.song-row-with-remove { position: relative; display: flex; align-items: center; gap: 10px; }
+.queue-index {
+  position: absolute;
+  top: 3px;
+  left: 8px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--ink-faint);
+  line-height: 1;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.85;
+}
 .song-row-with-remove .song-row { flex: 1; padding-right: 8px; }
 .drag-handle {
   flex-shrink: 0;

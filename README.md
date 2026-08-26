@@ -1,4 +1,4 @@
-# Next Gen Worship — Worship Song App (Beta v2.0.0 — Playlists, Favorites, Chord Visibility)
+# Next Gen Worship Beta — Worship Song App (Beta v2.0.2 — Playlists, Favorites, Chord Visibility)
 
 An offline-first worship songbook PWA. Static HTML/CSS/JS, no build step, no
 backend — built to run on GitHub Pages and install like a native app.
@@ -196,7 +196,7 @@ Install row in Settings explains this instead of showing a dead button.
 
 ### Updating the app later
 
-Bump `CACHE_VERSION` at the top of `service-worker.js` (e.g. `songbook-v2.0.1-beta`)
+Bump `CACHE_VERSION` at the top of `service-worker.js` (e.g. `songbook-v2.0.0-beta`)
 whenever you ship changed files. That's what tells installed devices to fetch
 the new version instead of serving the old cached copy. Also bump
 `APP_VERSION` at the top of `js/app.js` (and its mirror at the repo root,

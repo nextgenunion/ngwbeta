@@ -6,7 +6,7 @@
 // manifest — nothing here needs to change.
 // =========================================================
 
-const APP_VERSION = 'Beta v2.0.0';
+const APP_VERSION = 'Beta v2.0.2';
 
 // --- Hard update backstop -------------------------------------------------
 // Everything above (scrollRestoration, controllerchange auto-reload,
@@ -1418,10 +1418,6 @@ function renderPlaylistsList() {
 function bindPlaylistView() {
   document.getElementById('playlist-back-btn').addEventListener('click', () => history.back());
 
-  document.getElementById('playlist-edit-btn').addEventListener('click', () => {
-    setPlaylistEditMode(!playlistEditMode);
-  });
-
   document.getElementById('playlist-menu-btn').addEventListener('click', (e) => {
     e.stopPropagation();
     togglePlaylistMenu();
@@ -1451,6 +1447,7 @@ function openPlaylistMenu() {
   wrap.id = 'playlist-kebab-dropdown';
   wrap.innerHTML = `
     <button type="button" id="kebab-add-songs"><svg data-icon="plus" viewBox="0 0 24 24"></svg>${escapeHtml(t('addSongsTitle'))}</button>
+    <button type="button" id="kebab-edit"><svg data-icon="${playlistEditMode ? 'check' : 'pencil'}" viewBox="0 0 24 24"></svg>${escapeHtml(playlistEditMode ? t('doneBtn') : t('editBtn'))}</button>
     ${pl.isFavorites ? '' : `
     <button type="button" id="kebab-rename"><svg data-icon="pencil" viewBox="0 0 24 24"></svg>${escapeHtml(t('menuRename'))}</button>
     <button type="button" id="kebab-delete" class="is-danger"><svg data-icon="trash" viewBox="0 0 24 24"></svg>${escapeHtml(t('menuDelete'))}</button>
@@ -1465,6 +1462,11 @@ function openPlaylistMenu() {
     e.stopPropagation();
     closePlaylistMenu();
     openAddSongsModal(state.activePlaylistId);
+  });
+  wrap.querySelector('#kebab-edit').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closePlaylistMenu();
+    setPlaylistEditMode(!playlistEditMode);
   });
   const renameBtn = wrap.querySelector('#kebab-rename');
   if (renameBtn) renameBtn.addEventListener('click', (e) => {
@@ -1490,11 +1492,7 @@ function closePlaylistMenu() {
 let playlistEditMode = false;
 function setPlaylistEditMode(on) {
   playlistEditMode = on;
-  const listEl = document.getElementById('playlist-song-list');
-  const btn = document.getElementById('playlist-edit-btn');
-  listEl.classList.toggle('is-editing', on);
-  btn.setAttribute('aria-pressed', String(on));
-  btn.textContent = on ? t('doneBtn') : t('editBtn');
+  document.getElementById('playlist-song-list').classList.toggle('is-editing', on);
 }
 
 function openPlaylist(id, opts = {}) {
@@ -1526,11 +1524,17 @@ function renderPlaylistView() {
     .filter(x => x.song);
   emptyEl.hidden = resolved.length !== 0;
 
-  resolved.forEach(({ ref, song }) => {
+  resolved.forEach(({ ref, song }, index) => {
     const li = document.createElement('li');
     li.className = 'song-row-with-remove';
     li.dataset.sourceKey = ref.sourceKey;
     li.dataset.songId = song.id;
+
+    const queueIndex = document.createElement('span');
+    queueIndex.className = 'queue-index';
+    queueIndex.textContent = String(index + 1);
+    queueIndex.setAttribute('aria-hidden', 'true');
+    li.appendChild(queueIndex);
 
     const handle = document.createElement('button');
     handle.type = 'button';
@@ -1623,6 +1627,7 @@ function onPlaylistDragEnd() {
   dragLi.classList.remove('is-dragging');
   dragLi = null;
   commitPlaylistOrderFromDom();
+  renderPlaylistView(); // refresh the small queue-position numbers to match the new order
 }
 
 function commitPlaylistOrderFromDom() {
