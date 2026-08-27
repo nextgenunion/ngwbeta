@@ -295,9 +295,11 @@ body.nav-hidden .page-inner {
   position: relative;
 }
 /* Give the header enough room so the mascot's feet don't dip into the
-   search bar below it — only added on the days it's actually shown. */
+   search bar below it — only added on the days it's actually shown.
+   Shorter than before since the bubble now sits beside the figure
+   instead of stacked on top of it. */
 .page-header:has(#sabbath-mascot:not([hidden])) {
-  padding-bottom: 40px;
+  padding-bottom: 26px;
 }
 
 .brand { display: flex; align-items: center; gap: 10px; }
@@ -322,6 +324,10 @@ body.nav-hidden .page-inner {
  * rule, so an ungated version here silently overrides `hidden` and shows
  * the mascot every day regardless of what JS sets the attribute to —
  * that was live on production and is exactly what this fixes.
+ *
+ * Static on purpose — no bob/wave/fade-in. Bubble sits to the left of the
+ * figure, comic-style, so row order (bubble markup first, then figure)
+ * plus flex-direction: row is what actually places it there.
  */
 .sabbath-mascot:not([hidden]) {
   position: absolute;
@@ -329,18 +335,19 @@ body.nav-hidden .page-inner {
   right: 2px;
   z-index: 2;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  animation: sabbath-bob 3.4s ease-in-out infinite;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
 }
 .sabbath-mascot-figure {
   width: 52px;
   height: auto;
   display: block;
+  flex-shrink: 0;
   filter: drop-shadow(0 3px 6px rgba(31, 42, 68, 0.14));
 }
 .sabbath-bubble {
+  position: relative;
   background: var(--surface);
   color: var(--ink);
   font-family: var(--font-body);
@@ -350,41 +357,27 @@ body.nav-hidden .page-inner {
   padding: 5px 9px;
   border-radius: 12px;
   box-shadow: var(--shadow-1);
-  white-space: nowrap;
   max-width: 132px;
   white-space: normal;
   text-align: center;
-  animation: sabbath-bubble-in 0.4s ease both;
-  animation-delay: 0.2s;
-  opacity: 0;
 }
-@keyframes sabbath-bubble-in {
-  from { opacity: 0; transform: translateY(4px) scale(0.9); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes sabbath-bob {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-3px); }
-}
-#mascot-wave-arm {
-  /* Pivots at the wrist, where this hand meets its sleeve — given directly
-     in the SVG's own viewBox coordinates (229.9, 1197), not as a fill-box
-     percentage. fill-box percentage-of-bounding-box support is
-     inconsistent enough across renderers that it visibly mis-pivoted in
-     testing (the hand swung off wildly instead of rotating in place), so
-     plain absolute coordinates are used instead — safer and predictable
-     everywhere. Recalculated for this mascot artwork; a future swap needs
-     its own wrist point measured the same way. */
-  transform-origin: 229.9px 1197px;
-  animation: sabbath-wave 1.3s ease-in-out infinite;
-}
-@keyframes sabbath-wave {
-  0%, 100% { transform: rotate(0deg); }
-  50%      { transform: rotate(16deg); }
+/* Comic-style speech-bubble tail, pointing right toward the mascot's face
+   since the bubble sits to its left. */
+.sabbath-bubble::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -6px;
+  width: 10px;
+  height: 10px;
+  background: var(--surface);
+  transform: translateY(-50%) rotate(45deg);
+  border-radius: 0 3px 0 0;
+  box-shadow: 2px -2px 2px -2px rgba(31, 42, 68, 0.12);
 }
 @media (max-width: 380px) {
   .sabbath-mascot-figure { width: 44px; }
-  .sabbath-bubble { font-size: 0.62rem; max-width: 108px; padding: 4px 7px; }
+  .sabbath-bubble { font-size: 0.62rem; max-width: 100px; padding: 4px 7px; }
 }
 
 /* ---------- search ---------- */

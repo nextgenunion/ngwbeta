@@ -2470,9 +2470,10 @@ function registerServiceWorker() {
 }
 
 // ---------------------------------------------------------
-// Easter egg #1: a tiny mascot that waves hello on Saturdays (the
-// Sabbath), top-right of the Songbook page. Markup lives in index.html
-// (#sabbath-mascot); look/animation in css/style.css (.sabbath-mascot).
+// Easter egg #1: a tiny mascot that appears on Saturdays (the Sabbath),
+// top-right of the Songbook page, with a speech bubble to its left.
+// Static — no bobbing/waving. Markup lives in index.html
+// (#sabbath-mascot); look lives in css/style.css (.sabbath-mascot).
 // ---------------------------------------------------------
 function isSabbathToday() {
   // Sunday=0 ... Saturday=6, per the device's own local clock/timezone —
