@@ -2457,6 +2457,13 @@ function isSabbathToday() {
   // Sunday=0 ... Saturday=6, per the device's own local clock/timezone —
   // there's no one global "Saturday", so this deliberately goes with
   // whatever day it is wherever the person actually is.
+  //
+  // Testing hook: open the app with ?previewSabbath=1 in the URL (e.g.
+  // index.html?previewSabbath=1) to force the mascot on regardless of
+  // what day it actually is — no need to change the device's clock just
+  // to preview it. Harmless to leave in; nobody stumbles into it by
+  // accident since it takes a deliberate query param.
+  if (new URLSearchParams(location.search).get('previewSabbath') === '1') return true;
   return new Date().getDay() === 6;
 }
 
