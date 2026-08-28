@@ -325,9 +325,13 @@ body.nav-hidden .page-inner {
  * the mascot every day regardless of what JS sets the attribute to —
  * that was live on production and is exactly what this fixes.
  *
- * Static on purpose — no bob/wave/fade-in. Bubble sits to the left of the
- * figure, comic-style, so row order (bubble markup first, then figure)
- * plus flex-direction: row is what actually places it there.
+ * Only the whole-mascot bob (gentle up/down float) animates. The hand
+ * itself (#mascot-wave-arm in the SVG) stays static — no wave. Bubble
+ * sits to the left of the figure, comic-style, so row order (bubble
+ * markup first, then figure) plus flex-direction: row is what actually
+ * places it there; align-items: flex-start + the bubble's margin-top
+ * below is what lines its center up with the figure's mouth rather than
+ * the middle of the whole body.
  */
 .sabbath-mascot:not([hidden]) {
   position: absolute;
@@ -336,11 +340,16 @@ body.nav-hidden .page-inner {
   z-index: 2;
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
+  animation: sabbath-bob 3.4s ease-in-out infinite;
+}
+@keyframes sabbath-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
 }
 .sabbath-mascot-figure {
-  width: 52px;
+  width: 46px;
   height: auto;
   display: block;
   flex-shrink: 0;
@@ -348,6 +357,7 @@ body.nav-hidden .page-inner {
 }
 .sabbath-bubble {
   position: relative;
+  margin-top: 14px;
   background: var(--surface);
   color: var(--ink);
   font-family: var(--font-body);
@@ -361,23 +371,25 @@ body.nav-hidden .page-inner {
   white-space: normal;
   text-align: center;
 }
-/* Comic-style speech-bubble tail, pointing right toward the mascot's face
-   since the bubble sits to its left. */
+/* Comic-style speech-bubble tail (a plain CSS triangle, not a rotated
+   box — a rotated box reads as an arrowhead poking out, not a tail),
+   pointing right toward the mascot's mouth since the bubble sits to its
+   left. */
 .sabbath-bubble::after {
   content: "";
   position: absolute;
   top: 50%;
-  right: -6px;
-  width: 10px;
-  height: 10px;
-  background: var(--surface);
-  transform: translateY(-50%) rotate(45deg);
-  border-radius: 0 3px 0 0;
-  box-shadow: 2px -2px 2px -2px rgba(31, 42, 68, 0.12);
+  right: -7px;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 7px solid var(--surface);
 }
 @media (max-width: 380px) {
-  .sabbath-mascot-figure { width: 44px; }
-  .sabbath-bubble { font-size: 0.62rem; max-width: 100px; padding: 4px 7px; }
+  .sabbath-mascot-figure { width: 40px; }
+  .sabbath-bubble { font-size: 0.62rem; max-width: 100px; padding: 4px 7px; margin-top: 11px; }
 }
 
 /* ---------- search ---------- */
