@@ -1,8 +1,34 @@
 /* =========================================================
    Songbook — design tokens
+   Copyright (c) 2026 Next Gen Union. All rights reserved.
+   Proprietary and confidential. No unauthorized copying, modification,
+   or redistribution, in whole or in part, without prior written
+   permission from Next Gen Union. See LICENSE for full terms.
+
    Palette: neutral ink/paper + selectable pastel accent (chord tokens)
    Type: Fraunces (display/titles) · Inter (UI/lyrics) · IBM Plex Mono (chords)
    ========================================================= */
+
+/* Registering these as typed <color> custom properties (rather than plain
+   untyped strings) is what makes them animatable — it lets the browser
+   interpolate between the old and new accent colors on the `transition`
+   below instead of snapping instantly. initial-value here is only a spec
+   requirement for @property; the real default comes from :root below. */
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #44CAFD;
+}
+@property --accent-strong {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0E86B8;
+}
+@property --accent-tint {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #E1F6FE;
+}
 
 :root {
   --paper:        #F3F3F1;
@@ -14,10 +40,14 @@
   --surface:      #FFFFFF;
   --danger:       #B4483C;
 
-  /* Accent palette — default aqua; overridden per data-accent value below. */
+  /* Accent palette — default aqua; overridden per data-accent value below.
+     The transition lives here (rather than on individual buttons/icons)
+     so every element reading var(--accent...) fades together in one pass
+     whenever the person picks a new swatch in Settings. */
   --accent:        #44CAFD;
   --accent-strong: #0E86B8;
   --accent-tint:   #E1F6FE;
+  transition: --accent 0.35s ease, --accent-strong 0.35s ease, --accent-tint 0.35s ease;
 
   --shadow-1: 0 1px 2px rgba(31,42,68,0.06), 0 1px 1px rgba(31,42,68,0.04);
   --shadow-2: 0 6px 20px rgba(31,42,68,0.10);
@@ -60,12 +90,14 @@ html[data-accent="sage"]       { --accent: #6FA37E; --accent-strong: #3F6350; --
 html[data-accent="lavender"]   { --accent: #8C7FCB; --accent-strong: #5B4FA8; --accent-tint: #EDEAFB; }
 html[data-accent="aqua"]       { --accent: #44CAFD; --accent-strong: #0E86B8; --accent-tint: #E1F6FE; }
 html[data-accent="cinnamon"]   { --accent: #A9762F; --accent-strong: #8C6526; --accent-tint: #F1E4C8; }
+html[data-accent="red"]        { --accent: #E8919E; --accent-strong: #B5586B; --accent-tint: #FBEBEE; }
 
 html[data-theme="dark"][data-accent="periwinkle"] { --accent: #8CA6EE; --accent-strong: #C7D4F8; --accent-tint: #1E2A44; }
 html[data-theme="dark"][data-accent="sage"]       { --accent: #8FC29E; --accent-strong: #C8E6D0; --accent-tint: #1C2E22; }
 html[data-theme="dark"][data-accent="lavender"]   { --accent: #B3A8E8; --accent-strong: #DCD5F5; --accent-tint: #241F3D; }
 html[data-theme="dark"][data-accent="aqua"]       { --accent: #6FDBFF; --accent-strong: #BEEFFF; --accent-tint: #113247; }
 html[data-theme="dark"][data-accent="cinnamon"]   { --accent: #D9A94B; --accent-strong: #E7BE6C; --accent-tint: #2C2618; }
+html[data-theme="dark"][data-accent="red"]        { --accent: #F0A3AF; --accent-strong: #FBD6DC; --accent-tint: #3A252A; }
 
 /* ---------- splash screen ---------- */
 #splash-screen {
@@ -134,11 +166,12 @@ body {
      makes "always top when opening a song, exactly-where-you-left-off
      when going back" actually reliable. */
   overflow: hidden;
-  background:
-    radial-gradient(1100px 560px at 12% -8%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 60%),
-    radial-gradient(900px 500px at 105% 5%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 58%),
-    var(--paper);
-  background-attachment: fixed;
+  /* Solid fallback only — the real (gradient) background now lives on
+     .page itself, see below. Two .page elements briefly overlap during
+     the slide transition (see runPageSlideTransition in app.js), so each
+     one needs to be fully opaque on its own or the page underneath would
+     show through the transparent gaps of the one sliding on top of it. */
+  background: var(--paper);
 }
 
 .song-view-topbar {
@@ -149,19 +182,49 @@ body {
   align-items: center;
   margin: 0 -18px;
   padding: calc(env(safe-area-inset-top) + 10px) 18px 10px;
-  background: color-mix(in srgb, var(--paper) 42%, transparent);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
-  border-bottom: 1px solid var(--line);
   font-family: var(--font-display);
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--ink-soft);
 }
+/* The bar's own box only ever spans .page-inner's (max 720px) width, so a
+   background painted directly on it stops short of the real viewport edge
+   on wide/desktop screens — unlike .bottom-nav, which is edge-to-edge with
+   its content capped by .bottom-nav-inner instead. This pseudo-element
+   repaints the same background at a full 100vw, centered under the bar, so
+   it reaches the actual screen edges the same way the nav bar does while
+   the label text above it stays exactly where it was. */
+.song-view-topbar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  z-index: -1;
+  background: color-mix(in srgb, var(--paper) 42%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid var(--line);
+}
 
 h1, h2, h3 { font-family: var(--font-display); margin: 0; color: var(--ink); }
 
 button { font-family: inherit; }
+
+/* Kill the default mobile "tap highlight" flash Android/Chrome paints over
+   buttons and links while pressed — it sits on top of our own :active
+   styles (e.g. .song-row:active, .playlist-row:active) and looks like a
+   stray blue box. Our own :active/:focus-visible styles below still work
+   fine without it. */
+*, ::before, ::after {
+  -webkit-tap-highlight-color: transparent;
+}
+button, a {
+  -webkit-user-select: none;
+  user-select: none;
+}
 
 /* ---------- page shell ---------- */
 .page {
@@ -180,6 +243,17 @@ button { font-family: inherit; }
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
+  /* Moved here from body (see the comment there) so each page is opaque
+     on its own. No background-attachment: fixed needed — .page's own box
+     never moves (it's position:fixed to the viewport already), so the
+     default attachment already keeps this static while the content inside
+     scrolls; `fixed` specifically is a known janky/expensive combination
+     with overflow:auto scrolling containers on iOS Safari, so this avoids
+     that entirely. */
+  background:
+    radial-gradient(1100px 560px at 12% -8%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 60%),
+    radial-gradient(900px 500px at 105% 5%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 58%),
+    var(--paper);
 }
 .page-inner {
   max-width: 720px;
@@ -190,8 +264,47 @@ body.nav-hidden .page-inner {
   padding-bottom: calc(env(safe-area-inset-bottom) + 40px);
 }
 
+/* Push/pop slide transition for song-view and playlist-view (see
+   SLIDE_PAGES/runPageSlideTransition in app.js). Both are plain
+   `transform: translateX(...)` animations — a single compositor layer per
+   page, no layout or repaint of the content underneath — so this is cheap
+   to run even on low-end phones, the same technique native navigation
+   stacks use for this exact transition. A light shadow rides along on the
+   entering/leaving page to sell the sense of one screen sitting on top of
+   another rather than the two just swapping. */
+.page-slide-in, .page-slide-out {
+  box-shadow: -12px 0 28px rgba(0, 0, 0, 0.16);
+}
+@keyframes page-slide-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes page-slide-out {
+  from { transform: translateX(0); }
+  to   { transform: translateX(100%); }
+}
+.page-slide-in {
+  animation: page-slide-in 300ms cubic-bezier(.32, .72, .35, 1) both;
+  will-change: transform;
+}
+.page-slide-out {
+  animation: page-slide-out 300ms cubic-bezier(.32, .72, .35, 1) both;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-slide-in, .page-slide-out { animation: none; box-shadow: none; }
+}
+
 .page-header {
   padding: 22px 2px 14px;
+  position: relative;
+}
+/* Give the header enough room so the mascot's feet don't dip into the
+   search bar below it — only added on the days it's actually shown.
+   Shorter than before since the bubble now sits beside the figure
+   instead of stacked on top of it. */
+.page-header:has(#sabbath-mascot:not([hidden])) {
+  padding-bottom: 26px;
 }
 
 .brand { display: flex; align-items: center; gap: 10px; }
@@ -207,6 +320,116 @@ body.nav-hidden .page-inner {
   letter-spacing: -0.01em;
 }
 
+/* ---------- Easter egg: Sabbath mascot (see initSabbathMascot() in app.js) ---------- */
+/*
+ * display:flex must stay gated behind :not([hidden]) — same pattern as
+ * .sv-links, .bottom-nav, .modal-overlay etc. below. A plain class
+ * selector like `.sabbath-mascot { display: flex }` has higher CSS
+ * specificity than the browser's built-in `[hidden] { display: none }`
+ * rule, so an ungated version here silently overrides `hidden` and shows
+ * the mascot every day regardless of what JS sets the attribute to —
+ * that was live on production and is exactly what this fixes.
+ *
+ * Only the whole-mascot bob (gentle up/down float) animates. The hand
+ * itself (#mascot-wave-arm in the SVG) stays static — no wave. Bubble
+ * sits to the left of the figure, comic-style, so row order (bubble
+ * markup first, then figure) plus flex-direction: row is what actually
+ * places it there; align-items: flex-start + the bubble's margin-top
+ * below is what lines its center up with the figure's mouth rather than
+ * the middle of the whole body.
+ */
+.sabbath-mascot:not([hidden]) {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  z-index: 2;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  animation: sabbath-bob 3.4s ease-in-out infinite;
+}
+@keyframes sabbath-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+.sabbath-mascot-figure {
+  width: 46px;
+  height: auto;
+  display: block;
+  flex-shrink: 0;
+  filter: drop-shadow(0 3px 6px rgba(31, 42, 68, 0.14));
+}
+.sabbath-bubble {
+  position: relative;
+  margin-top: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.25;
+  padding: 5px 9px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-1);
+  max-width: 132px;
+  white-space: normal;
+  text-align: center;
+}
+/* Comic-style speech-bubble tail (a plain CSS triangle, not a rotated
+   box — a rotated box reads as an arrowhead poking out, not a tail),
+   pointing right toward the mascot's mouth since the bubble sits to its
+   left. */
+.sabbath-bubble::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -7px;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 7px solid var(--surface);
+}
+@media (max-width: 380px) {
+  .sabbath-mascot-figure { width: 40px; }
+  .sabbath-bubble { font-size: 0.62rem; max-width: 100px; padding: 4px 7px; margin-top: 11px; }
+}
+
+/* ---------- Easter egg: Christmas-week snow (Dec 15 – Jan 1); see
+   initChristmasSnow() in app.js ---------- */
+.christmas-snow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Capped short on purpose — a strip along the top, not the whole
+     screen, so it reads as a quiet seasonal touch rather than something
+     falling over the content people are trying to read. */
+  height: 120px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+.snowflake {
+  position: absolute;
+  top: -10px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.15);
+  animation-name: christmas-snowfall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes christmas-snowfall {
+  from { transform: translate(0, -10px); }
+  to   { transform: translate(var(--drift), 132px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .snowflake { animation: none; opacity: 0.35; }
+}
+
 /* ---------- search ---------- */
 .search-bar {
   position: relative;
@@ -217,9 +440,14 @@ body.nav-hidden .page-inner {
   border-radius: var(--radius-m);
   padding: 0 14px;
   box-shadow: var(--shadow-1);
+  transition: border-color .15s, box-shadow .15s;
+}
+.search-bar:focus-within {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px var(--accent-tint);
 }
 .search-icon { width: 18px; height: 18px; fill: var(--ink-faint); flex-shrink: 0; }
-#search-input {
+#search-input, .search-field {
   width: 100%;
   border: none;
   background: transparent;
@@ -228,8 +456,26 @@ body.nav-hidden .page-inner {
   font-size: 1rem;
   color: var(--ink);
   font-family: var(--font-body);
+  -webkit-appearance: none;
+  appearance: none;
 }
-#search-input::placeholder { color: var(--ink-faint); }
+#search-input::-webkit-search-decoration,
+#search-input::-webkit-search-cancel-button,
+#search-input::-webkit-search-results-button,
+#search-input::-webkit-search-results-decoration,
+.search-field::-webkit-search-decoration,
+.search-field::-webkit-search-cancel-button,
+.search-field::-webkit-search-results-button,
+.search-field::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  display: none;
+}
+#search-input::placeholder, .search-field::placeholder { color: var(--ink-faint); }
+/* .search-bar itself draws the focus highlight (border + soft ring above);
+   suppress the input's own outline so we don't get a second, square box
+   that doesn't match the pill shape. */
+#search-input:focus, .search-field:focus,
+#search-input:focus-visible, .search-field:focus-visible { outline: none; box-shadow: none; }
 
 /* ---------- sort row ---------- */
 .sort-row {
@@ -350,6 +596,13 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   padding: 0 20px;
   line-height: 1.5;
 }
+
+/* Playlists page: when Favorites is the only playlist, this text sits right
+   under the divider drawn after it, so it needs the tight spacing of a
+   sub-section note rather than the large centered gap of a fully empty page. */
+.playlists-empty-state--pinned {
+  margin-top: 12px;
+}
 .load-error {
   text-align: center;
   color: var(--danger);
@@ -364,7 +617,7 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 .song-view-header {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
   padding: 18px 2px 8px;
 }
 .icon-btn {
@@ -378,19 +631,49 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 }
 .icon-btn svg { width: 20px; height: 20px; fill: var(--ink); }
 
-.song-view-title { min-width: 0; padding-top: 2px; }
+/* The favorite/add-to-playlist buttons sit right next to the title and
+   weren't there when the title's width budget was originally tuned — on
+   narrow phones that leaves noticeably less room for the title than
+   before, pushing long titles to an extra wrapped line. Trimming just
+   these two (not every icon-btn — the back button stays full-size, same
+   as playlist-view's) claws a little of that width back for the title
+   without shrinking anything the person actually taps most. */
+#sv-favorite-btn, #sv-add-playlist-btn { width: 34px; height: 34px; }
+#sv-favorite-btn svg, #sv-add-playlist-btn svg { width: 18px; height: 18px; }
+
+.song-view-title { flex: 1; min-width: 0; padding-top: 2px; }
 .sv-number {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   color: var(--accent-strong);
   font-weight: 600;
 }
-#sv-title {
+#sv-title, #pv-title {
   font-size: 1.5rem;
   line-height: 1.2;
   margin-top: 2px;
   font-weight: 600;
+  overflow-wrap: break-word;
 }
+/* Same reasoning as the button trim above, just for the text side: a
+   small step down in size on narrow phones only (desktop/tablet keep the
+   original 1.5rem) buys back another wrapped line on long titles. */
+@media (max-width: 400px) {
+  #sv-title { font-size: 1.34rem; }
+}
+.pv-title-input {
+  font-family: inherit;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  font-weight: 600;
+  width: 100%;
+  border: none;
+  border-bottom: 2px solid var(--accent-strong);
+  background: transparent;
+  color: var(--ink);
+  padding: 0 0 2px;
+}
+.pv-title-input:focus { outline: none; }
 .sv-artist { margin: 2px 0 0; color: var(--ink-faint); font-size: 0.9rem; }
 .sv-alt-title { margin: 2px 0 0; color: var(--ink-faint); font-size: 0.85rem; font-style: italic; }
 
@@ -520,6 +803,20 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 }
 .chord-tag-spacer { height: calc(var(--chord-size) + 6px); }
 
+/* Subtle "pop" when chords change (transpose up/down/reset). Applied only
+   to the chord tags on a re-render triggered by an actual transpose
+   action — not on first opening a song — and staggered slightly per
+   chord so it reads as a light ripple down the page rather than a flash. */
+@keyframes chord-pop {
+  0%   { transform: translateY(-2px) scale(0.94); opacity: 0.55; }
+  55%  { transform: translateY(0) scale(1.035); opacity: 1; }
+  100% { transform: translateY(0) scale(1); }
+}
+.chord-tag.chord-pop {
+  animation: chord-pop 260ms cubic-bezier(.3,.7,.4,1.05) both;
+  animation-delay: var(--chord-pop-delay, 0ms);
+}
+
 .lyric-word {
   font-size: var(--lyrics-size);
   color: var(--ink);
@@ -597,6 +894,31 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 .settings-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .settings-row-actions .btn-secondary { white-space: nowrap; }
 
+/* .settings-row-nav: the tappable "About" row that opens its own page.
+   Same layout as .settings-row (it IS one, plus this) but rendered as a
+   <button> — full-width, no default button chrome, with a chevron that
+   reuses back-arrow.svg flipped via CSS rather than shipping a second
+   near-identical icon asset. */
+.settings-row-nav {
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--line);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.settings-section .settings-heading + .settings-row-nav { border-top: none; }
+.settings-row-nav:active { background: var(--paper-dim); }
+.settings-row-chevron {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--ink-faint);
+  transform: scaleX(-1);
+}
+
 .select-input {
   border: 1px solid var(--line);
   background: var(--paper);
@@ -613,6 +935,7 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 .about-appname { margin: 3px 0 0; font-family: var(--font-display); font-size: 1.02rem; font-weight: 600; color: var(--ink); }
 .about-description { margin: 4px 0 0; font-size: 0.86rem; color: var(--ink-soft); }
 .about-copyright { margin: 8px 0 0; font-size: 0.86rem; color: var(--ink-soft); }
+.about-copyright-terms { margin: 4px 0 0; font-size: 0.74rem; line-height: 1.4; color: var(--ink-soft); opacity: 0.8; }
 .about-social { display: flex; justify-content: center; gap: 14px; margin-top: 16px; }
 .about-social:empty { margin-top: 0; }
 .about-social a {
@@ -624,11 +947,38 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 }
 .about-social svg { width: 18px; height: 18px; fill: currentColor; }
 
+.about-credits { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.about-credits-heading {
+  margin: 0 0 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.about-credits-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.about-credits-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.86rem;
+}
+.about-credits-role { font-weight: 600; color: var(--ink); }
+.about-credits-name { color: var(--ink-faint); font-size: 0.8rem; }
+.about-credits-name::before { content: "— "; }
+
 .about-contact-btn {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-top: 16px;
   padding: 10px 18px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -639,6 +989,13 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 }
 .about-contact-btn:not([hidden]) { display: inline-flex; }
 .about-contact-btn svg { width: 16px; height: 16px; fill: currentColor; }
+
+.about-contact-section {
+  margin-top: 20px;
+  padding: 20px 16px 24px;
+  text-align: center;
+  border-top: 1px solid var(--line);
+}
 
 .about-contact-fallback {
   align-items: center;
@@ -827,6 +1184,26 @@ html[data-theme="dark"] .btn-primary { background: var(--accent); color: var(--p
   border-radius: 999px;
   box-shadow: var(--shadow-2);
   z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* `.toast { display:flex }` above and the `[hidden]` attribute have equal
+   CSS specificity (0-1-0), so without this rule the later author rule wins
+   and the toast stays visually visible even while `hidden` is set — which
+   is why it was showing up as a permanent bar pinned above the nav. */
+.toast[hidden] { display: none; }
+.toast-action {
+  background: none;
+  border: none;
+  color: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 2px 2px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  flex-shrink: 0;
 }
 html[data-theme="dark"] .toast {
   background: color-mix(in srgb, var(--accent) 62%, transparent);
@@ -852,4 +1229,337 @@ html[data-theme="dark"] .toast {
 
 @media (min-width: 560px) {
   .page-header h1 { font-size: 1.9rem; }
+}
+
+/* ---------- playlists list ---------- */
+.page-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.page-header-row h1 { padding: 0; }
+
+.playlist-list { list-style: none; margin: 16px 0 0; padding: 0; }
+.playlist-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: var(--shadow-1);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.playlist-row:active { transform: scale(0.99); }
+.playlist-row:hover { box-shadow: var(--shadow-2); }
+.playlist-icon {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+}
+.playlist-icon svg { width: 19px; height: 19px; fill: currentColor; }
+.playlist-row.is-favorites .playlist-icon { background: #F6DCD9; color: var(--danger); }
+html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: #3A2229; }
+.playlist-row-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.playlist-row-title { font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--ink); }
+.playlist-row-sub { font-size: 0.83rem; color: var(--ink-faint); margin-top: 1px; }
+
+/* Divider between the (always-present, pinned-first) Favorites row and the
+   user's own playlists below it. */
+.playlist-list-divider {
+  list-style: none;
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 4px 4px 16px;
+}
+
+/* ---------- song-view header actions (favorite / add-to-playlist) ---------- */
+.song-view-header { flex-wrap: wrap; }
+#sv-favorite-btn[aria-pressed="true"] svg { fill: var(--danger); }
+#sv-favorite-btn { margin-left: auto; }
+
+/* ---------- playlist-view header ---------- */
+.pv-header-actions { display: flex; align-items: center; gap: 8px; margin-left: 12px; flex-shrink: 0; }
+/*
+ * Sits to the left of the kebab menu, but ONLY while playlist edit mode
+ * is on (see setPlaylistEditMode in app.js) — hidden the rest of the
+ * time. Gives a direct way out of reorder/remove mode without having to
+ * reopen the kebab dropdown you used to get in.
+ */
+.btn-pill-done {
+  flex-shrink: 0;
+  border: 1px solid var(--accent-strong);
+  background: var(--accent-strong);
+  color: var(--paper);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 9px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.btn-pill-done[hidden] { display: none; }
+.btn-pill-toggle {
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 9px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.btn-pill-toggle[aria-pressed="true"] {
+  background: var(--accent-strong);
+  color: var(--paper);
+  border-color: var(--accent-strong);
+}
+
+/* ---------- playlist-view song rows (view mode vs. edit mode) ---------- */
+.song-row-with-remove { position: relative; display: flex; align-items: center; gap: 10px; }
+/*
+ * Queue-position number and drag-handle occupy the same fixed-width flex
+ * slot at the start of the row (only one of the two is visible at a time,
+ * toggled by .is-editing) — NOT an absolutely-positioned overlay with a
+ * matching padding-left reserved on the row. An absolute .queue-index +
+ * padding-left combo left a dead gap in edit mode (the padding stayed
+ * reserved even after the number was hidden, so the handle sat behind an
+ * empty strip) and had no equivalent reserved space on the right in view
+ * mode, so the row read as off-center. Giving both the same width (32px,
+ * matching .drag-handle) and letting them sit as normal flex children
+ * keeps the row balanced in both modes with a single mechanism.
+ */
+.queue-index {
+  flex-shrink: 0;
+  width: 32px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-faint);
+  line-height: 1;
+  pointer-events: none;
+}
+.song-row-with-remove .song-row { flex: 1; padding-right: 8px; }
+.drag-handle {
+  flex-shrink: 0;
+  width: 32px; height: 44px;
+  border: none;
+  background: transparent;
+  display: none; /* shown only in edit mode via .is-editing */
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+  color: var(--ink-faint);
+}
+.drag-handle svg { width: 18px; height: 18px; fill: currentColor; }
+.song-row-remove {
+  flex-shrink: 0;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: none; /* shown only in edit mode via .is-editing */
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.song-row-remove svg { width: 15px; height: 15px; fill: var(--danger); }
+#playlist-song-list.is-editing .drag-handle,
+#playlist-song-list.is-editing .song-row-remove { display: flex; }
+#playlist-song-list.is-editing .song-row { pointer-events: none; } /* rows don't open the song while editing */
+#playlist-song-list.is-editing .queue-index { display: none; } /* drag handle takes over ordering cues in edit mode */
+.song-row-with-remove.is-dragging { position: relative; z-index: 30; box-shadow: var(--shadow-2); }
+
+/* ---------- kebab dropdown menu ---------- */
+.kebab-menu-wrap { position: relative; }
+.kebab-dropdown {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  z-index: 25;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-2);
+  min-width: 160px;
+  overflow: hidden;
+}
+.kebab-dropdown button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 12px 14px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.kebab-dropdown button:active { background: var(--paper-dim); }
+.kebab-dropdown button svg { width: 16px; height: 16px; fill: currentColor; flex-shrink: 0; }
+.kebab-dropdown button.is-danger { color: var(--danger); }
+
+/* ---------- modal ---------- */
+/*
+ * --vvh / --vv-top are kept in sync with window.visualViewport by JS
+ * (see syncViewportVars in app.js). On mobile, opening the keyboard
+ * shrinks the *visual* viewport but leaves the *layout* viewport (and
+ * therefore 100vh / inset:0 on a `fixed` element) untouched — the
+ * overlay was sizing itself against real estate the keyboard was now
+ * covering, which is what pushed/clipped the sheet. Falling back to
+ * 100vh/0 keeps desktop and older browsers unaffected.
+ */
+.modal-overlay {
+  position: fixed;
+  top: var(--vv-top, 0px);
+  left: 0;
+  right: 0;
+  height: var(--vvh, 100vh);
+  z-index: 50;
+  background: color-mix(in srgb, #000 45%, transparent);
+  align-items: flex-end;
+  justify-content: center;
+}
+.modal-overlay[hidden] { display: none; }
+.modal-overlay:not([hidden]) { display: flex; }
+.modal-card {
+  width: 100%;
+  max-width: 480px;
+  max-height: min(82vh, calc(var(--vvh, 100vh) - 24px));
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border-radius: var(--radius-l) var(--radius-l) 0 0;
+  box-shadow: var(--shadow-2);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: modal-slide-up .22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes modal-slide-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (min-width: 560px) {
+  .modal-overlay { align-items: center; }
+  .modal-card { border-radius: var(--radius-l); }
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 18px 8px;
+  flex-shrink: 0;
+}
+.modal-header h3 { font-size: 1.15rem; font-weight: 600; }
+.modal-body { padding: 4px 18px 22px; overflow-y: auto; }
+
+.modal-text-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius-s);
+  padding: 12px 14px;
+  font-size: 1rem;
+  font-family: var(--font-body);
+  outline: none;
+  margin-top: 10px;
+}
+.modal-text-input:focus { border-color: var(--accent-strong); }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.modal-hint { font-size: 0.82rem; color: var(--ink-faint); margin: 4px 2px 0; }
+
+.checklist { list-style: none; margin: 8px 0 0; padding: 0; }
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.checklist-item-sub { font-size: 0.78rem; color: var(--ink-faint); font-weight: 400; margin-top: 1px; }
+.checklist-check {
+  flex-shrink: 0;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+}
+.checklist-check svg { width: 14px; height: 14px; fill: var(--paper); opacity: 0; }
+.checklist-item[aria-pressed="true"] .checklist-check {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+.checklist-item[aria-pressed="true"] .checklist-check svg { opacity: 1; }
+.checklist-item-icon { flex-shrink: 0; color: var(--ink-faint); }
+.checklist-item.is-favorites .checklist-item-icon { color: var(--danger); }
+.checklist-item-icon svg { width: 18px; height: 18px; fill: currentColor; }
+.checklist-badge {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.modal-new-playlist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px dashed var(--line);
+  background: transparent;
+  border-radius: var(--radius-m);
+  padding: 12px 14px;
+  margin-top: 4px;
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+.modal-new-playlist-row svg { width: 16px; height: 16px; fill: currentColor; }
+
+.modal-search {
+  margin-bottom: 4px;
 }
