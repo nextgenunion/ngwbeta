@@ -1,19 +1,10 @@
-<!--
-  NGWorship (Songbook)
-  Copyright (c) 2026 Next Gen Union. All rights reserved.
-
-  Proprietary and confidential. No part of this software or its content
-  may be copied, modified, or redistributed, in whole or in part, without
-  prior written permission from Next Gen Union. See LICENSE for full terms.
--->
 <!DOCTYPE html>
 <html lang="mn" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>NGWorship Beta / Дууны ном</title>
+<title>Songbook / Дууны ном</title>
 <meta name="description" content="Офлайнаар ажилладаг дууны ном / An offline-first worship songbook.">
-<meta name="copyright" content="© 2026 Next Gen Union. All rights reserved. Proprietary — no unauthorized copying, modification, or redistribution.">
 <meta name="theme-color" content="#1F2A44" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#F3F3F1" media="(prefers-color-scheme: light)">
 
@@ -23,7 +14,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <!-- Shorter name for the phone/desktop home-screen label -->
-<meta name="apple-mobile-web-app-title" content="NGWorship Beta">
+<meta name="apple-mobile-web-app-title" content="NGWorship">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,11 +35,6 @@
     <div class="brand">
       <svg class="brand-mark" data-icon="brand-mark" viewBox="0 0 24 24" aria-hidden="true"></svg>
       <h1 id="t-appTitle">Дууны ном</h1>
-    </div>
-    <!-- Easter egg: only unhidden on Saturdays, see initSabbathMascot() in app.js -->
-    <div id="sabbath-mascot" class="sabbath-mascot" hidden>
-      <p id="sabbath-bubble" class="sabbath-bubble"></p>
-      <svg class="sabbath-mascot-figure" data-icon="mascot-sabbath" viewBox="0 0 100 128" aria-hidden="true"></svg>
     </div>
   </header>
 
@@ -76,51 +62,6 @@
  </div>
 </main>
 
-<!-- ===== PLAYLISTS PAGE ===== -->
-<main id="page-playlists" class="page" data-page="playlists" hidden>
- <div class="page-inner">
-  <header class="page-header page-header-row">
-    <h1 id="t-playlistsTitle">Playlists</h1>
-    <button id="new-playlist-btn" class="icon-btn" aria-label="New playlist">
-      <svg data-icon="plus" viewBox="0 0 24 24"></svg>
-    </button>
-  </header>
-
-  <ul id="playlist-list" class="playlist-list"></ul>
-
-  <p id="playlists-empty-state" class="empty-state" hidden></p>
- </div>
-</main>
-
-<!-- ===== PLAYLIST VIEW PAGE ===== -->
-<main id="page-playlist-view" class="page" data-page="playlist-view" hidden>
- <div class="page-inner">
-  <div class="song-view-topbar">
-    <span id="t-topbarAppName2">Дууны ном</span>
-  </div>
-
-  <header class="song-view-header pv-header">
-    <button id="playlist-back-btn" class="icon-btn" aria-label="Back to playlists">
-      <svg data-icon="back-arrow" viewBox="0 0 24 24"></svg>
-    </button>
-    <div class="song-view-title">
-      <h2 id="pv-title"></h2>
-      <p id="pv-count" class="sv-artist"></p>
-    </div>
-    <div class="pv-header-actions">
-      <button id="playlist-done-btn" class="btn-pill-done" hidden></button>
-      <button id="playlist-menu-btn" class="icon-btn" aria-label="Playlist options">
-        <svg data-icon="menu-kebab" viewBox="0 0 24 24"></svg>
-      </button>
-    </div>
-  </header>
-
-  <ul id="playlist-song-list" class="song-list"></ul>
-
-  <p id="playlist-view-empty-state" class="empty-state" hidden></p>
- </div>
-</main>
-
 <!-- ===== SONG VIEW PAGE ===== -->
 <main id="page-song-view" class="page" data-page="song-view" hidden>
  <div class="page-inner">
@@ -138,12 +79,6 @@
       <p id="sv-alt-title" class="sv-alt-title" hidden></p>
       <p id="sv-artist" class="sv-artist" hidden></p>
     </div>
-    <button id="sv-favorite-btn" class="icon-btn" aria-label="Add to favorites" aria-pressed="false">
-      <svg data-icon="heart-outline" viewBox="0 0 24 24"></svg>
-    </button>
-    <button id="sv-add-playlist-btn" class="icon-btn" aria-label="Add to playlist">
-      <svg data-icon="plus" viewBox="0 0 24 24"></svg>
-    </button>
   </header>
 
   <div class="transpose-bar">
@@ -208,7 +143,6 @@
         <button class="accent-swatch" data-accent="lavender" aria-pressed="false" aria-label="Lavender" style="background:#8C7FCB"></button>
         <button class="accent-swatch" data-accent="aqua" aria-pressed="false" aria-label="Aqua" style="background:#3FA9B0"></button>
         <button class="accent-swatch" data-accent="cinnamon" aria-pressed="false" aria-label="Cinnamon" style="background:#A9762F"></button>
-        <button class="accent-swatch" data-accent="red" aria-pressed="false" aria-label="Rose" style="background:#E8919E"></button>
       </div>
     </div>
   </section>
@@ -239,7 +173,7 @@
     <div class="settings-row">
       <div class="settings-row-text">
         <span class="settings-row-title" id="install-title">Install app</span>
-        <span class="settings-row-sub" id="install-sub">Add Next Gen Worship Beta to your home screen for offline, app-like access</span>
+        <span class="settings-row-sub" id="install-sub">Add Next Gen Worship to your home screen for offline, app-like access</span>
       </div>
       <button id="install-btn" class="btn-primary" hidden></button>
       <span id="installed-badge" class="installed-badge" hidden></span>
@@ -254,80 +188,34 @@
         <button id="reload-app-btn" class="btn-secondary" type="button"></button>
       </div>
     </div>
-    <div class="settings-row">
-      <div class="settings-row-text">
-        <span class="settings-row-title" id="t-playlistsBackupTitle">Playlists backup</span>
-        <span class="settings-row-sub" id="t-playlistsBackupSub">Playlists are saved on this device per browser. Export/import a file to move them to another browser on this phone.</span>
-      </div>
-      <div class="settings-row-actions">
-        <button id="export-playlists-btn" class="btn-secondary" type="button"></button>
-        <button id="import-playlists-btn" class="btn-secondary" type="button"></button>
-        <input type="file" id="import-playlists-file" accept="application/json" hidden>
-      </div>
-    </div>
   </section>
 
   <section class="settings-section about-section">
     <h3 class="settings-heading" id="t-sectionAbout">About</h3>
-    <button type="button" class="settings-row settings-row-nav" id="about-nav-row">
-      <div class="settings-row-text">
-        <span class="settings-row-title" id="about-nav-title">Next Gen Worship Beta</span>
-        <span class="settings-row-sub" id="about-nav-sub">Version, credits, and social links</span>
+    <div class="about-block">
+      <img src="icons/about-logo.png" alt="" class="about-logo">
+      <p class="about-label" id="t-versionTitle">Version</p>
+      <p class="about-appname" id="about-version-line">Next Gen Worship</p>
+      <p class="about-description" id="about-description">Offline songbook for Adventist Church.</p>
+      <p class="about-copyright" id="about-copyright"></p>
+      <a class="about-contact-btn" id="about-contact-btn" href="#">
+        <svg data-icon="contact-mail" viewBox="0 0 24 24"></svg>
+        <span id="t-contactBtn">Send feedback</span>
+      </a>
+      <div class="about-contact-fallback" id="about-contact-fallback" hidden>
+        <span id="about-contact-email"></span>
+        <button type="button" id="about-contact-copy" aria-label="Copy email address">
+          <svg data-icon="copy" viewBox="0 0 24 24"></svg>
+        </button>
       </div>
-      <svg class="settings-row-chevron" data-icon="back-arrow" viewBox="0 0 24 24"></svg>
-    </button>
+      <div class="about-social" id="about-social"></div>
+    </div>
   </section>
 
   <blockquote class="scripture-footer">
     <p id="scripture-verse-text"></p>
     <cite id="scripture-verse-ref"></cite>
   </blockquote>
- </div>
-</main>
-
-<!-- ===== ABOUT PAGE ===== -->
-<main id="page-about" class="page" data-page="about" hidden>
- <div class="page-inner">
-  <div class="song-view-topbar">
-    <span id="t-topbarAppName3">Дууны ном</span>
-  </div>
-
-  <header class="song-view-header pv-header">
-    <button id="about-back-btn" class="icon-btn" aria-label="Back to settings">
-      <svg data-icon="back-arrow" viewBox="0 0 24 24"></svg>
-    </button>
-    <div class="song-view-title">
-      <h2 id="t-sectionAbout2">About</h2>
-    </div>
-  </header>
-
-  <div class="about-block">
-    <img src="icons/about-logo.png" alt="" class="about-logo">
-    <p class="about-label" id="t-versionTitle">Version</p>
-    <p class="about-appname" id="about-version-line">Next Gen Worship Beta</p>
-    <p class="about-description" id="about-description">Offline songbook for Adventist Church.</p>
-    <p class="about-copyright" id="about-copyright"></p>
-    <p class="about-copyright-terms" id="about-copyright-terms"></p>
-    <div class="about-social" id="about-social"></div>
-
-    <div class="about-credits" id="about-credits" hidden>
-      <p class="about-credits-heading" id="t-creditsHeading">Credits</p>
-      <ul class="about-credits-list" id="about-credits-list"></ul>
-    </div>
-  </div>
-
-  <div class="about-contact-section">
-    <a class="about-contact-btn" id="about-contact-btn" href="#">
-      <svg data-icon="contact-mail" viewBox="0 0 24 24"></svg>
-      <span id="t-contactBtn">Send feedback</span>
-    </a>
-    <div class="about-contact-fallback" id="about-contact-fallback" hidden>
-      <span id="about-contact-email"></span>
-      <button type="button" id="about-contact-copy" aria-label="Copy email address">
-        <svg data-icon="copy" viewBox="0 0 24 24"></svg>
-      </button>
-    </div>
-  </div>
  </div>
 </main>
 
@@ -339,10 +227,6 @@
     <svg data-icon="nav-songs" viewBox="0 0 24 24"></svg>
     <span id="t-navSongs">Songs</span>
   </button>
-  <button class="nav-btn" data-nav="playlists">
-    <svg data-icon="nav-playlist" viewBox="0 0 24 24"></svg>
-    <span id="t-navPlaylists">Playlists</span>
-  </button>
   <button class="nav-btn" data-nav="settings">
     <svg data-icon="nav-settings" viewBox="0 0 24 24"></svg>
     <span id="t-navSettings">Settings</span>
@@ -350,33 +234,8 @@
  </div>
 </nav>
 
-<!-- Easter egg: only unhidden Dec 15 – Jan 1, see initChristmasSnow() in
-     app.js. Fixed to the viewport (not inside any .page), so it sits over
-     every screen and survives page-transition swaps; its own height is
-     capped so it only ever covers a strip along the top, never the whole
-     screen. -->
-<div id="christmas-snow" class="christmas-snow" hidden aria-hidden="true"></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-<div id="toast" class="toast" role="status" aria-live="polite" hidden>
-  <span id="toast-msg"></span>
-  <button type="button" id="toast-action" class="toast-action" hidden></button>
-</div>
-
-<!-- ===== MODAL (shared shell — playlist create/rename, add-to-playlist,
-     add-songs, delete-confirm all render their content into #modal-body) ===== -->
-<div id="modal-overlay" class="modal-overlay" hidden>
-  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-    <div class="modal-header">
-      <h3 id="modal-title"></h3>
-      <button id="modal-close-btn" class="icon-btn" aria-label="Close">
-        <svg data-icon="close" viewBox="0 0 24 24"></svg>
-      </button>
-    </div>
-    <div id="modal-body" class="modal-body"></div>
-  </div>
-</div>
-
-<script src="version.js"></script>
 <script src="config.js"></script>
 <script src="lang/config.js"></script>
 <script src="lang/eng.js"></script>

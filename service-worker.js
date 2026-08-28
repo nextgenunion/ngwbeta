@@ -1,16 +1,6 @@
 // Songbook service worker — offline-first app shell + data cache.
-// Copyright (c) 2026 Next Gen Union. All rights reserved.
-// Proprietary and confidential. No unauthorized copying, modification,
-// or redistribution, in whole or in part, without prior written
-// permission from Next Gen Union. See LICENSE for full terms.
-//
-// Service workers can't use <script> tags, so importScripts() is the
-// standard way to pull in shared code — this runs version.js in this
-// worker's global scope, which sets self.SONGBOOK_CACHE_VERSION etc.
-// The actual version number lives in ONE place, version.js — bump it
-// there, not here.
-importScripts('./version.js');
-const CACHE_VERSION = self.SONGBOOK_CACHE_VERSION;
+// Bump CACHE_VERSION whenever shipped files change so clients pick up updates.
+const CACHE_VERSION = 'songbook-v1.0.1';
 
 // The core shell: without any one of these the app can't run at all, so
 // these are cached atomically — if even one fails, the whole install fails
@@ -21,7 +11,6 @@ const CORE_SHELL = [
   './index.html',
   './offline.html',
   './manifest.json',
-  './version.js',
   './css/style.css',
   './js/app.js',
   './config.js',
@@ -52,17 +41,6 @@ const BEST_EFFORT_ASSETS = [
   './icons/svg/copy.svg',
   './icons/svg/nav-songs-bookmark.svg',
   './icons/svg/nav-settings-gear.svg',
-  './icons/svg/nav-playlist.svg',
-  './icons/svg/heart-outline.svg',
-  './icons/svg/heart-filled.svg',
-  './icons/svg/menu-kebab.svg',
-  './icons/svg/plus.svg',
-  './icons/svg/trash.svg',
-  './icons/svg/pencil.svg',
-  './icons/svg/close.svg',
-  './icons/svg/check.svg',
-  './icons/svg/download.svg',
-  './icons/svg/upload.svg',
   './icons/svg/social-facebook.svg',
   './icons/svg/social-youtube.svg',
   './icons/svg/social-instagram.svg',

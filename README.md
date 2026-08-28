@@ -1,36 +1,14 @@
-# Next Gen Worship Beta — Worship Song App (Beta v2.0.14 — Playlists, Favorites, Chord Visibility)
+# Next Gen Worship — Worship Song App (v1.0.0 — first official release)
 
 An offline-first worship songbook PWA. Static HTML/CSS/JS, no build step, no
 backend — built to run on GitHub Pages and install like a native app.
 
-This is **Version 2** of the planning doc's roadmap, building on Version 1
-(official songs, settings, light/dark mode, smart search, chord transpose)
-by adding **Playlists** and a permanent **Favorites** playlist. User Songs
-and Sheet Music are still ahead — see "Built for what's next", below.
+This is **Version 1** of the planning doc's roadmap: official songs, settings,
+light/dark mode, smart search, and chord transpose. User Songs, Playlists,
+and Sheet Music are Version 2+ — see "Built for what's next", below, for how
+the app is already set up to grow into them without a rewrite.
 
-## What's new in this version
-
-- **Playlists** — a new "Playlists" tab in the bottom navigation, between
-  Songs and Settings
-- A permanent **Favorites** playlist — tap the heart icon on any song to
-  add/remove it; it can't be renamed or deleted
-- Create a playlist from Settings-free, one-tap **+** on the Playlists page,
-  or directly from inside a song (**+** next to the heart) — creating one
-  there adds the current song to it in the same step
-- Add more songs to an existing playlist from inside that playlist (its own
-  **+** button opens a searchable song picker)
-- **Rename** or **delete** any user-created playlist via the three-dot (⋮)
-  menu in the top-right of that playlist's page (not shown for Favorites)
-- Playlists are saved on-device (IndexedDB, with a localStorage fallback)
-  behind a small, swappable storage layer (`PlaylistStorage` in
-  `js/app.js`) — see "Playlists storage", below, for what this does and
-  doesn't cover
-- **Export / Import playlists** (Settings → App) — downloads/loads a
-  `ngworship-playlists.json` file, the supported way to carry playlists to
-  a different browser on the same phone (see below for why this is a
-  manual step, not automatic)
-
-## What's in this version (carried over from v1)
+## What's in this version
 
 - Official songs library with search (title, song number, artist, and lyric
   phrases — try searching "God awesome")
@@ -40,40 +18,12 @@ and Sheet Music are still ahead — see "Built for what's next", below.
 - Independent lyric and chord font size controls
 - Light / dark mode (saved on-device)
 - **Interface language: Mongolian (default) and English**, switchable in
-  Settings (Playlists strings are also localized for Korean; the
-  traditional-script Mongolian variant currently falls back to modern
-  Cyrillic for the new Playlists strings only, pending a proper
-  translation pass)
+  Settings
 - Settings page with a song-database selector and an **Install App** button
 - Full PWA support: manifest, service worker, offline caching
-- Bottom navigation: Songs, Playlists, Settings — User Songs and Sheet
-  Music are not yet in the nav; they'll be added back in when their
-  versions land
-
-## Playlists storage — what "local file, not browser-specific" means here
-
-Playlists are saved **on the device**, not in the cloud — there's no
-backend and nothing is uploaded anywhere. In practice that means IndexedDB
-as the primary store, with a localStorage mirror as a fallback for
-contexts where IndexedDB isn't available. Both of those are genuinely
-**per-browser** storage: a real limitation of the web platform is that a
-website has no way to share storage between two different browsers (say,
-Chrome and Safari) on the same phone, or to write to an arbitrary file
-the way a native app could, without the person's explicit, per-file
-permission each time.
-
-So: playlists **do** persist across visits, tab closes, and reopening the
-installed app, and **do** survive on the same browser you created them in.
-If you switch to a different browser on the same phone, use **Settings →
-Export** to save a `ngworship-playlists.json` file, then **Import** it in
-the other browser — that's the supported way to carry playlists across
-browsers on this device today.
-
-The storage code itself (`PlaylistStorage` in `js/app.js`) is deliberately
-isolated behind two functions — `load()` and `save()` — so this can be
-upgraded later (e.g. to the File System Access API, writing to a real file
-the person picks once) without touching any of the playlist logic that
-calls it.
+- Bottom navigation shows only what's live in this version (Songs, Settings) —
+  User Songs, Playlists, and Sheet Music are not yet in the nav; they'll be
+  added back in when their versions land
 
 ## Project structure
 
@@ -196,57 +146,12 @@ Install row in Settings explains this instead of showing a dead button.
 
 ### Updating the app later
 
-Bump `SONGBOOK_VERSION_NUMBER` at the top of `version.js` whenever you ship
-changed files. That's the **only** place a version number needs to be
-edited — everything else derives from it automatically. Update
-`SONGBOOK_VERSION_PRERELEASE` in the same file too (e.g. `'beta.1'`, or
-`''` for a stable release) if that needs to change.
-
-#### Why the version number matters — and why it's a single source of truth
-
-This app is offline-first: the service worker caches the app shell
-aggressively so it keeps working with no connection. That means an
-installed device will happily keep serving old, stale files **forever**
-unless something tells it a new version exists.
-
-Two things depend on the version number, for different reasons:
-
-- **`CACHE_VERSION`** (used in `service-worker.js`) is the cache-busting
-  signal — changing its string is literally what causes
-  `caches.open(CACHE_VERSION)` to open a *new* cache bucket, which makes
-  the old one eligible for deletion and forces the browser to re-fetch
-  every file. Ship changed files without bumping this and users can be
-  stuck on the old version indefinitely, even after a hard refresh.
-- **`APP_VERSION`** (used in `js/app.js`) is what's shown to the user on
-  the About/Settings page (across every language file, via
-  `versionSub(v)`), and it also drives the hard-update backstop — the code
-  that detects a version mismatch on load and force-wipes the service
-  worker + cache as a last resort, in case the normal `CACHE_VERSION`
-  update path doesn't fire for some reason.
-
-Historically these lived as separate hardcoded literals in `README.md`,
-`js/app.js`, and `service-worker.js`, which meant they could quietly drift
-out of sync with each other — the number shown on a user's screen wasn't
-necessarily the version of code/cache they were actually running, which
-makes bug reports hard to trust.
-
-That's what `version.js` fixes: it's the one file with an actual number in
-it (`SONGBOOK_VERSION_NUMBER`), and everything else is derived from that:
-
-- `js/app.js` reads `window.SONGBOOK_APP_VERSION` (`APP_VERSION` is just
-  set to that on load) instead of hardcoding its own string.
-- `service-worker.js` can't use `<script>` tags — it's a worker, not a
-  page — so it pulls in the same file with
-  `importScripts('./version.js')`, and reads
-  `self.SONGBOOK_CACHE_VERSION` from it.
-- The title heading at the top of this README is the one thing that isn't
-  wired up automatically (a static Markdown file can't run JS), so update
-  it by hand to match `version.js` when you bump the version — it's just
-  documentation, not something any code reads.
-
-Because `version.js` is itself listed in `CORE_SHELL` in
-`service-worker.js`, it's cached and available offline like the rest of
-the app shell.
+Bump `CACHE_VERSION` at the top of `service-worker.js` (e.g. `songbook-v1.0.1`)
+whenever you ship changed files. That's what tells installed devices to fetch
+the new version instead of serving the old cached copy. Also bump
+`APP_VERSION` at the top of `js/app.js` (and its mirror at the repo root,
+`app.js` — see below) when app logic changes, since that drives the
+hard-update backstop described in that file's own comments.
 
 ## Installing the app (PWA)
 
