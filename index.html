@@ -306,6 +306,13 @@
  </div>
 </nav>
 
+<!-- Easter egg: only unhidden Dec 15 – Jan 1, see initChristmasSnow() in
+     app.js. Fixed to the viewport (not inside any .page), so it sits over
+     every screen and survives page-transition swaps; its own height is
+     capped so it only ever covers a strip along the top, never the whole
+     screen. -->
+<div id="christmas-snow" class="christmas-snow" hidden aria-hidden="true"></div>
+
 <div id="toast" class="toast" role="status" aria-live="polite" hidden>
   <span id="toast-msg"></span>
   <button type="button" id="toast-action" class="toast-action" hidden></button>

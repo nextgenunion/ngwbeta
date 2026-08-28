@@ -392,6 +392,39 @@ body.nav-hidden .page-inner {
   .sabbath-bubble { font-size: 0.62rem; max-width: 100px; padding: 4px 7px; margin-top: 11px; }
 }
 
+/* ---------- Easter egg: Christmas-week snow (Dec 15 – Jan 1); see
+   initChristmasSnow() in app.js ---------- */
+.christmas-snow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Capped short on purpose — a strip along the top, not the whole
+     screen, so it reads as a quiet seasonal touch rather than something
+     falling over the content people are trying to read. */
+  height: 120px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+.snowflake {
+  position: absolute;
+  top: -10px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.15);
+  animation-name: christmas-snowfall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes christmas-snowfall {
+  from { transform: translate(0, -10px); }
+  to   { transform: translate(var(--drift), 132px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .snowflake { animation: none; opacity: 0.35; }
+}
+
 /* ---------- search ---------- */
 .search-bar {
   position: relative;

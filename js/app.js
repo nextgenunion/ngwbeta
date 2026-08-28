@@ -257,6 +257,7 @@ async function init() {
   safe('setupInstallPrompt', setupInstallPrompt);
   safe('initHistoryNav', initHistoryNav);
   safe('initSabbathMascot', initSabbathMascot);
+  safe('initChristmasSnow', initChristmasSnow);
   safe('bindAccentDiscoEasterEgg', bindAccentDiscoEasterEgg);
   requestPersistentStorage(); // fire-and-forget; never block startup on this
 
@@ -286,6 +287,16 @@ async function requestPersistentStorage() {
 // Song data: one JSON file per song, listed in data/songs/manifest.json.
 // Adding a song = add its JSON file + one line in the manifest; nothing
 // else in the app needs to change.
+//
+// Uses Promise.allSettled rather than Promise.all deliberately: the
+// manifest and the actual files on disk can drift out of sync (a song
+// removed without updating the manifest, a typo in a filename, a song
+// still mid-upload). With Promise.all, ONE missing/broken file rejects
+// the whole batch and the entire library — every other song, including
+// ones that are perfectly fine — silently fails to load. That's the bug
+// that made the app look like it had no songs (and so no working audio
+// player) at all. allSettled loads everything that *does* work and just
+// warns about what doesn't, so one bad entry can't take down the rest.
 // ---------------------------------------------------------
 async function fetchSongData({ forceRefresh = false } = {}) {
   const headers = forceRefresh ? { 'X-Force-Refresh': '1' } : {};
@@ -293,11 +304,28 @@ async function fetchSongData({ forceRefresh = false } = {}) {
   if (!manifestRes.ok) throw new Error(`manifest.json responded ${manifestRes.status}`);
   const files = await manifestRes.json();
 
-  return Promise.all(files.map(async (file) => {
+  const results = await Promise.allSettled(files.map(async (file) => {
     const res = await fetch(`data/songs/${file}`, { headers });
     if (!res.ok) throw new Error(`${file} responded ${res.status}`);
     return res.json();
   }));
+
+  const failed = results.filter(r => r.status === 'rejected');
+  if (failed.length) {
+    console.warn(
+      `Songbook: ${failed.length} of ${files.length} song file(s) failed to load and were skipped —`,
+      failed.map(r => r.reason && r.reason.message ? r.reason.message : r.reason)
+    );
+  }
+
+  const songs = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+  if (songs.length === 0 && files.length > 0) {
+    // Every single file failed (e.g. fully offline with no cache yet) —
+    // that's the one case that should still surface as a real failure so
+    // loadSongData()'s IndexedDB-backup fallback below kicks in.
+    throw new Error('all song files failed to load');
+  }
+  return songs;
 }
 
 // ---------------------------------------------------------
@@ -2508,6 +2536,60 @@ function initSabbathMascot() {
   // Covers the rare case of the app being left open across midnight —
   // cheap enough to just poll rather than schedule a precise timeout.
   setInterval(refresh, 5 * 60 * 1000);
+}
+
+// ---------------------------------------------------------
+// Easter egg #1b: light snow falling along the top of the screen during
+// Christmas week (Dec 15 – Jan 1 inclusive, device's own local clock).
+// Fixed to the viewport, not any one .page, so it's visible everywhere
+// and isn't rebuilt on every page transition. Deliberately confined to a
+// short strip along the top (see .christmas-snow's fixed height in
+// style.css) rather than the whole screen, and kept sparse/low-opacity —
+// this is meant to be a quiet seasonal touch sitting above the content,
+// not something that competes with it for attention.
+// ---------------------------------------------------------
+function isChristmasWeek() {
+  // Testing hook: ?previewChristmas=1 forces it on regardless of the
+  // actual date — same idea as ?previewSabbath=1 above.
+  if (new URLSearchParams(location.search).get('previewChristmas') === '1') return true;
+  const now = new Date();
+  const month = now.getMonth(); // 0-indexed: 11 = December, 0 = January
+  const date = now.getDate();
+  return (month === 11 && date >= 15) || (month === 0 && date === 1);
+}
+
+function initChristmasSnow() {
+  const el = document.getElementById('christmas-snow');
+  if (!el) return;
+
+  const show = isChristmasWeek();
+  el.hidden = !show;
+  if (!show) { el.innerHTML = ''; return; }
+  if (el.childElementCount) return; // already built for this session
+
+  // Built once as plain positioned/animated <span>s (no canvas/JS-driven
+  // rAF loop needed for something this simple) — each flake gets a
+  // randomized horizontal position, size, fall speed, start delay, drift,
+  // and opacity so the field doesn't look mechanically uniform.
+  const COUNT = 20;
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < COUNT; i++) {
+    const flake = document.createElement('span');
+    flake.className = 'snowflake';
+    const size = 3 + Math.random() * 4; // 3–7px
+    const duration = 7 + Math.random() * 6; // 7–13s to fall through the strip
+    const delay = Math.random() * duration; // stagger start so they don't fall in sync
+    const drift = (Math.random() * 30 - 15).toFixed(1); // -15..15px sideways over the fall
+    flake.style.left = `${(Math.random() * 100).toFixed(1)}%`;
+    flake.style.width = `${size}px`;
+    flake.style.height = `${size}px`;
+    flake.style.opacity = (0.3 + Math.random() * 0.45).toFixed(2);
+    flake.style.animationDuration = `${duration.toFixed(1)}s`;
+    flake.style.animationDelay = `-${delay.toFixed(1)}s`; // negative delay = starts mid-fall, so the strip isn't empty on first render
+    flake.style.setProperty('--drift', `${drift}px`);
+    frag.appendChild(flake);
+  }
+  el.appendChild(frag);
 }
 
 // ---------------------------------------------------------
