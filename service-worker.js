@@ -1,4 +1,8 @@
 // Songbook service worker — offline-first app shell + data cache.
+// Copyright (c) 2026 Next Gen Union. All rights reserved.
+// Proprietary and confidential. No unauthorized copying, modification,
+// or redistribution, in whole or in part, without prior written
+// permission from Next Gen Union. See LICENSE for full terms.
 //
 // Service workers can't use <script> tags, so importScripts() is the
 // standard way to pull in shared code — this runs version.js in this

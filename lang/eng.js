@@ -41,6 +41,8 @@ window.SONGBOOK_LANG.en = {
   uiLangSub: "Choose the language for menus and buttons",
   sectionApp: "App",
   sectionAbout: "About",
+  aboutNavSub: "Version, credits, and social links",
+  creditsHeading: "Credits",
   installTitle: "Install Next Gen Worship Beta",
   installSub: "Add Next Gen Worship Beta to your home screen for offline, app-like access",
   installSubInstalled: "Next Gen Worship Beta is installed on this device",
@@ -70,6 +72,7 @@ window.SONGBOOK_LANG.en = {
   toastEmailCopyFailed: "Couldn't copy — the address is shown above to copy manually",
   scriptureVerse: "Don't let anyone look down on you because you are young, but set an example for the believers in speech, in conduct, in love, in faith and in purity.",
   scriptureRef: "1 Timothy 4:12",
+  copyrightTerms: "Proprietary and confidential. No unauthorized copying, modification, or redistribution of this app or its contents, in whole or in part, without prior written permission.",
 
   navPlaylists: "Playlists",
   playlistsTitle: "Playlists",

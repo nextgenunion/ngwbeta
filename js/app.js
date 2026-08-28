@@ -1,5 +1,10 @@
 // =========================================================
 // Songbook — app.js
+// Copyright (c) 2026 Next Gen Union. All rights reserved.
+// Proprietary and confidential. No unauthorized copying, modification,
+// or redistribution, in whole or in part, without prior written
+// permission from Next Gen Union. See LICENSE for full terms.
+//
 // Data-driven: song content lives as one JSON file per song under
 // /data/songs/ (see data/songs/manifest.json), loaded at runtime by
 // loadSongData(). Adding a song = add a JSON file + one line in the
@@ -9,6 +14,28 @@
 // Sourced from version.js (loaded before this file in index.html) so this
 // never has to be edited here — bump the version in version.js instead.
 const APP_VERSION = window.SONGBOOK_APP_VERSION;
+const SEEN_VERSION_KEY = 'ngw_seen_version';
+
+// Marks the version we're about to reload into as "already seen", so that
+// when app.js re-executes after the reload, hardUpdateBackstop() below
+// sees no mismatch and stays quiet. Called by every code path that already
+// handles an update and is about to reload for it on its own (the normal
+// controllerchange path, and the manual "Reload app" button) — so the
+// backstop only ever fires for what it's actually meant for: a device that
+// somehow never went through one of those normal paths at all. Without
+// this, the backstop can't tell "a normal update just handled this" apart
+// from "nothing has ever updated this device", and reloads a second time
+// after every single normal update, on top of the reload that already
+// handled it.
+function markVersionSeen() {
+  try {
+    localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION);
+  } catch (e) {
+    // localStorage unavailable — the reload still happens either way;
+    // worst case here is the backstop redundantly double-checking on the
+    // next load, not a stuck/stale app.
+  }
+}
 
 // --- Hard update backstop -------------------------------------------------
 // Everything above (scrollRestoration, controllerchange auto-reload,
@@ -21,12 +48,19 @@ const APP_VERSION = window.SONGBOOK_APP_VERSION;
 // update (host-level caching quirks, timing races, whatever), the first
 // time it happens to load a genuinely fresh copy of this file, it will
 // self-heal rather than staying stuck on stale code indefinitely.
+//
+// The normal update paths (registerServiceWorker()'s controllerchange
+// listener, and the manual reloadApp() button) call markVersionSeen()
+// themselves just before they reload, specifically so this backstop sees
+// nothing to do on the load that follows. Without that, this ran a SECOND,
+// redundant reload after every single normal update — the mismatch here
+// used to only ever get cleared by this same block, so it could never tell
+// "a normal path just updated this" apart from "nothing ever has".
 (function hardUpdateBackstop() {
   try {
-    const key = 'ngw_seen_version';
-    const seen = localStorage.getItem(key);
+    const seen = localStorage.getItem(SEEN_VERSION_KEY);
     if (seen && seen !== APP_VERSION) {
-      localStorage.setItem(key, APP_VERSION);
+      localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION);
       const wipe = [];
       if ('serviceWorker' in navigator) {
         wipe.push(navigator.serviceWorker.getRegistrations().then(regs => Promise.all(regs.map(r => r.unregister()))));
@@ -37,7 +71,7 @@ const APP_VERSION = window.SONGBOOK_APP_VERSION;
       Promise.all(wipe).catch(() => {}).finally(() => window.location.reload());
       return;
     }
-    localStorage.setItem(key, APP_VERSION);
+    localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION);
   } catch (e) {
     // localStorage unavailable (e.g. private browsing edge cases) — the
     // normal service-worker update path above still applies, just skip
@@ -92,15 +126,16 @@ const PAGES = {
   'song-view':      { elId: 'page-song-view',      navKey: 'songs',     rememberScroll: false, hideNav: true },
   'playlists':      { elId: 'page-playlists',      navKey: 'playlists', rememberScroll: true,  onEnter: () => renderPlaylistsList() },
   'playlist-view':  { elId: 'page-playlist-view',  navKey: 'playlists', rememberScroll: false, hideNav: true },
-  'settings':       { elId: 'page-settings',       navKey: 'settings',  rememberScroll: true,  onEnter: () => resetContactUI() },
+  'settings':       { elId: 'page-settings',       navKey: 'settings',  rememberScroll: true },
+  'about':          { elId: 'page-about',          navKey: 'settings',  rememberScroll: false, hideNav: true, onEnter: () => resetContactUI() },
 };
 
 // Pages that open "on top of" another page (a song out of the songbook or
 // a playlist, pushed over whatever list it was opened from) rather than
-// being a sibling tab you switch between. These two get the slide
-// push/pop transition in showPage(); tab switches (Songs/Playlists/
-// Settings) stay an instant cut, same as before.
-const SLIDE_PAGES = new Set(['song-view', 'playlist-view']);
+// being a sibling tab you switch between. These get the slide push/pop
+// transition in showPage(); tab switches (Songs/Playlists/Settings) stay
+// an instant cut, same as before.
+const SLIDE_PAGES = new Set(['song-view', 'playlist-view', 'about']);
 
 // Remembers each rememberScroll page's scroll position (each .page
 // element's own scrollTop — see the CSS notes on .page for why it's no
@@ -216,6 +251,27 @@ function renderSocialLinks() {
   initIcons(el);
 }
 
+// Credits list on the About page — who's behind the app. Config-driven
+// (see config.js's `credits` array) so adding/removing people never needs
+// a code change; an empty array just hides the whole section.
+function renderCredits() {
+  const section = document.getElementById('about-credits');
+  const list = document.getElementById('about-credits-list');
+  if (!section || !list) return;
+  const credits = (window.SONGBOOK_APP_CONFIG && window.SONGBOOK_APP_CONFIG.credits) || [];
+  if (!credits.length) {
+    section.hidden = true;
+    list.innerHTML = '';
+    return;
+  }
+  section.hidden = false;
+  list.innerHTML = credits.map(c => `
+    <li class="about-credits-item">
+      <span class="about-credits-name">${escapeHtml(c.name || '')}</span>
+      <span class="about-credits-role">${escapeHtml(c.role || '')}</span>
+    </li>`).join('');
+}
+
 function t(key, ...args) {
   const dict = (window.SONGBOOK_LANG && window.SONGBOOK_LANG[state.lang]) || {};
   const entry = dict[key];
@@ -252,6 +308,7 @@ async function init() {
   safe('bindPlaylistView', bindPlaylistView);
   safe('bindModalShell', bindModalShell);
   safe('bindSettings', bindSettings);
+  safe('bindAboutPage', bindAboutPage);
   safe('applyLanguage', applyLanguage);
   safe('registerServiceWorker', registerServiceWorker);
   safe('setupInstallPrompt', setupInstallPrompt);
@@ -484,6 +541,24 @@ async function reloadApp() {
     return;
   }
 
+  // This function's own reload (below) is the deliberate, complete fix —
+  // the fresh load it triggers will register a new service worker, which
+  // will then claim this page and fire 'controllerchange' again. Without
+  // these, two other independent update-detection paths would each see
+  // that fresh load as a separate, unrelated update and reload it AGAIN,
+  // right on top of this one: registerServiceWorker()'s controllerchange
+  // listener (suppressed for this one cycle via the sessionStorage flag),
+  // and hardUpdateBackstop() at the top of this file (suppressed by
+  // marking the version as seen before we go). See the comments on those
+  // two for the full picture.
+  try {
+    sessionStorage.setItem('ngw_skip_next_auto_reload', '1');
+  } catch (e) {
+    // sessionStorage unavailable — worst case is one extra (harmless,
+    // if annoying) reload; not worth failing the whole action over.
+  }
+  markVersionSeen();
+
   try {
     if ('serviceWorker' in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -675,6 +750,11 @@ function applyLanguage() {
     // — and it uses the same fuller title as the playlists list page's
     // heading (playlistsTitle), not the short bottom-nav label.
     't-topbarAppName2': 'playlistsTitle',
+    // The About page's topbar sits above the settings context it was
+    // opened from (same reasoning as playlist-view above), so it uses
+    // settingsTitle ("Settings") rather than repeating "About" — the
+    // page's own header already says "About" via t-sectionAbout2.
+    't-topbarAppName3': 'settingsTitle',
     't-navSongs': 'navSongs',
     't-navSettings': 'navSettings',
     't-navPlaylists': 'navPlaylists',
@@ -699,7 +779,10 @@ function applyLanguage() {
     't-reloadTitle': 'reloadTitle',
     't-reloadSub': 'reloadSub',
     't-sectionAbout': 'sectionAbout',
+    't-sectionAbout2': 'sectionAbout',
     't-versionTitle': 'versionTitle',
+    't-creditsHeading': 'creditsHeading',
+    'about-nav-sub': 'aboutNavSub',
   };
   Object.entries(map).forEach(([id, key]) => {
     const el = document.getElementById(id);
@@ -719,6 +802,7 @@ function applyLanguage() {
 
   document.getElementById('empty-state').textContent = t('emptyState');
   document.getElementById('about-version-line').textContent = t('versionSub', APP_VERSION);
+  document.getElementById('about-nav-title').textContent = t('versionSub', APP_VERSION);
   document.getElementById('scripture-verse-text').textContent = `«${t('scriptureVerse')}»`;
   document.getElementById('scripture-verse-ref').textContent = t('scriptureRef');
 
@@ -726,6 +810,7 @@ function applyLanguage() {
   const orgName = appConfig.orgName || '';
   document.getElementById('about-copyright').textContent =
     `© ${new Date().getFullYear()} ${orgName}. All rights reserved.`;
+  document.getElementById('about-copyright-terms').textContent = t('copyrightTerms');
 
   document.getElementById('t-contactBtn').textContent = t('contactBtn');
   document.getElementById('about-contact-copy').setAttribute('aria-label', t('copyEmailAria'));
@@ -742,6 +827,7 @@ function applyLanguage() {
   document.getElementById('import-playlists-btn').textContent = t('importBtn');
 
   renderSocialLinks();
+  renderCredits();
 
   refreshInstallLabels();
   renderSongList();
@@ -826,10 +912,21 @@ function showPage(name, opts = {}) {
 
   if (transitionType) {
     const prevEl = document.getElementById(PAGES[prevName].elId);
-    runPageSlideTransition(transitionType, prevEl, targetEl);
+    runPageSlideTransition(transitionType, prevEl, targetEl, {
+      onDone: name === 'song-view' ? fixNativeAudioControlsPaint : null,
+    });
   } else {
     Object.values(PAGES).forEach(p => { document.getElementById(p.elId).hidden = true; });
     targetEl.hidden = false;
+    // No slide animation ran (reduced-motion, or a non-slide page), but the
+    // <audio controls> element in openSong() was still built while its page
+    // was `hidden`. Chromium's native audio controls (play button, scrubber)
+    // are a shadow-DOM widget that doesn't always get laid out properly for
+    // elements constructed off-screen/hidden — they can render as blank or
+    // half-drawn until something forces a reflow. A tap "fixes" it because
+    // that's exactly the kind of forced reflow. Do that proactively instead
+    // of waiting on the user to discover the trick.
+    if (name === 'song-view') fixNativeAudioControlsPaint();
   }
 
   document.querySelectorAll('.nav-btn[data-nav]').forEach(b => b.classList.remove('is-active'));
@@ -886,7 +983,8 @@ function prefersReducedMotion() {
 // work on the surrounding page), so this is cheap to animate even on
 // low-end devices — it's the same technique native app frameworks use for
 // this exact transition.
-function runPageSlideTransition(type, fromEl, toEl) {
+function runPageSlideTransition(type, fromEl, toEl, opts = {}) {
+  const { onDone = null } = opts;
   // Anything other than the two pages actually involved stays hidden as
   // before — only these two are ever visible at once, and only briefly.
   Object.values(PAGES).forEach(p => {
@@ -927,6 +1025,7 @@ function runPageSlideTransition(type, fromEl, toEl) {
     fromEl.hidden = true;
     topEl.removeEventListener('animationend', cleanup);
     topEl._slideCleanup = null;
+    if (onDone) onDone();
   };
   topEl._slideCleanup = cleanup;
   topEl.addEventListener('animationend', cleanup);
@@ -1144,6 +1243,25 @@ function updateFavoriteButtonUI() {
   const svg = btn.querySelector('svg');
   if (svg) svg.setAttribute('data-icon', isFav ? 'heart-filled' : 'heart-outline');
   injectIcon(svg);
+}
+
+// Chromium's native <audio controls> is a shadow-DOM widget (play button,
+// scrubber, time, volume) that's laid out once when the element becomes
+// visible. openSong() below builds it via innerHTML while the song-view
+// page is still hidden/off-screen (so its content is ready the instant the
+// page transition starts), which means that first layout pass can happen
+// before the element has real size — the controls then render blank or as
+// disconnected fragments, and stay that way until something forces a
+// reflow. A tap does that by accident; this does it on purpose, right
+// after the page has actually become visible; toggling `hidden` twice is a
+// no-op visually but makes the browser redo layout for the audio controls.
+function fixNativeAudioControlsPaint() {
+  document.querySelectorAll('#sv-audio audio').forEach(a => {
+    a.hidden = true;
+    // eslint-disable-next-line no-unused-expressions
+    void a.offsetHeight;
+    a.hidden = false;
+  });
 }
 
 function openSong(song, opts = {}) {
@@ -2228,7 +2346,15 @@ function resetContactUI() {
   contactFallback.hidden = true;
 }
 
+function bindAboutPage() {
+  document.getElementById('about-back-btn').addEventListener('click', () => history.back());
+}
+
 function bindSettings() {
+  document.getElementById('about-nav-row').addEventListener('click', () => {
+    showPage('about', { pushHistory: true, resetScroll: true });
+  });
+
   document.getElementById('reload-songs-btn').addEventListener('click', reloadSongLibrary);
   document.getElementById('reload-app-btn').addEventListener('click', reloadApp);
   document.getElementById('export-playlists-btn').addEventListener('click', exportPlaylists);
@@ -2478,10 +2604,42 @@ function registerServiceWorker() {
   // over. So instead of relying on the person to notice something's stale
   // and refresh, reload automatically — exactly once — the moment control
   // actually changes hands.
+  //
+  // Two things used to make this fire way more than that "exactly once":
+  //
+  // 1. `controllerchange` also fires the FIRST time a page ever gets a
+  //    service worker (no previous controller to hand off from — this
+  //    page was just loaded plain and a worker claimed it a moment
+  //    later). There's nothing stale to fix in that case; the page in
+  //    memory already matches what just got installed. hadController
+  //    below distinguishes a real handoff from that harmless first claim.
+  //
+  // 2. reloadApp() (the "Reload app" button) unregisters the old worker,
+  //    wipes caches, and calls location.reload() itself to force a fully
+  //    fresh load — but the fresh load then registers a brand new worker,
+  //    which activates and claims this same page, firing controllerchange
+  //    all over again and triggering a SECOND, redundant reload right on
+  //    top of the one the button already did. skipNextAutoReload (written
+  //    to sessionStorage by reloadApp() just before it reloads, so it
+  //    survives the reload) tells this run "the reload already happened
+  //    on purpose — sit this one cycle out."
+  const hadController = !!navigator.serviceWorker.controller;
   let reloadedForUpdate = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (reloadedForUpdate) return;
     reloadedForUpdate = true;
+    if (!hadController) return;
+    let skip = false;
+    try {
+      skip = sessionStorage.getItem('ngw_skip_next_auto_reload') === '1';
+      sessionStorage.removeItem('ngw_skip_next_auto_reload');
+    } catch (e) {
+      // sessionStorage unavailable — fall through and reload as normal;
+      // worst case here is the rare double-reload this was added to
+      // prevent, not a stuck/stale app.
+    }
+    if (skip) return;
+    markVersionSeen();
     window.location.reload();
   });
 

@@ -37,6 +37,8 @@ window.SONGBOOK_LANG.mn2 = {
   uiLangSub: "ᠼᠧᠰᠧ᠂ ᠲᠣᠪᠴᠢᠯᠠᠭᠤᠷ ᠤ᠋ᠨ ᢈᠡᠯᠡ ᠶ᠋ᠢ ᠰᠣᠩᠭᠤᠨ᠎ᠠ ᠤᠤ",
   sectionApp: "ᠠᠫᠫ",
   sectionAbout: "ᠲᠤᠬᠠᠢ",
+  aboutNavSub: "Хувилбар, багийн мэдээлэл, сошиал холбоосууд",
+  creditsHeading: "Багийн гишүүд",
   installTitle: "Next Gen Worship Beta ᠰᠠᠭᠤᠯᠭᠠᠬᠤ",
   installSub: "Next Gen Worship Beta-᠆ᠶ᠋ᠢ ᠨᠢᠭᠤᠷ ᠳᠡᠯᢉᠡᠴᠡ ᠤᠷᠤᠭᠤ ᠨᠡᠮᠡᠵᠦ᠂ ᠣᠹᠯᠠᠶᠢᠨ᠋ ᠠᠰᠢᠭᠯᠠᠨ᠎ᠠ ᠤᠤ",
   installSubInstalled: "Next Gen Worship Beta ᠡᠨᠡ ᠲᠥᢈᠦᢉᠡᠷᠦᠮᠵᠢ ᠳ᠋ᠦ ᠰᠠᠭᠤᠯᠭᠠᠭᠳᠠᠭᠰᠠᠨ ᠪᠠᠶᠢᠨ᠎ᠠ",
@@ -69,6 +71,7 @@ window.SONGBOOK_LANG.mn2 = {
   // NOTE: not yet translated into traditional Mongolian script — falls
   // back to modern Cyrillic (matching lang/mn.js) so the feature is fully
   // usable in this language pending a proper translation pass.
+  copyrightTerms: "Өмчлөгчийн эрх хамгаалагдсан, нууц мэдээлэл. Урьдчилан бичгээр зөвшөөрөл авалгүйгээр энэ аппликейшн болон түүний агуулгыг бүхэлд нь эсвэл хэсэгчлэн зөвшөөрөлгүй хуулах, өөрчлөх, дахин түгээхийг хориглоно.",
   navPlaylists: "Жагсаалт",
   playlistsTitle: "Дууны жагсаалт",
   favoritesName: "Дуртай дуу",

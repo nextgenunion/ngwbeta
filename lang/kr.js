@@ -37,6 +37,8 @@ window.SONGBOOK_LANG.kr = {
   uiLangSub: "메뉴와 버튼에 사용할 언어를 선택하세요",
   sectionApp: "앱",
   sectionAbout: "정보",
+  aboutNavSub: "버전, 제작진, 소셜 링크",
+  creditsHeading: "제작진",
   installTitle: "Next Gen Worship Beta 설치",
   installSub: "Next Gen Worship Beta을 홈 화면에 추가하여 오프라인에서 앱처럼 사용하세요",
   installSubInstalled: "Next Gen Worship Beta이 이 기기에 설치되었습니다",
@@ -66,6 +68,7 @@ window.SONGBOOK_LANG.kr = {
   toastEmailCopyFailed: "복사하지 못했습니다 — 위 주소를 직접 복사해 주세요",
   scriptureVerse: "누구든지 네 연소함을 업신여기지 못하게 하고 오직 말과 행실과 사랑과 믿음과 정절에 있어서 믿는 자에게 본이 되어",
   scriptureRef: "디모데전서 4:12",
+  copyrightTerms: "무단 전재 및 재배포 금지. 사전 서면 허가 없이 본 앱 또는 그 내용의 전부 또는 일부를 복사, 수정, 재배포할 수 없습니다.",
 
   navPlaylists: "재생목록",
   playlistsTitle: "재생목록",

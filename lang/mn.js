@@ -37,6 +37,8 @@ window.SONGBOOK_LANG.mn = {
   uiLangSub: "Цэс, товчлуурын хэлийг сонгоно уу",
   sectionApp: "Апп",
   sectionAbout: "Тухай",
+  aboutNavSub: "Хувилбар, багийн мэдээлэл, сошиал холбоосууд",
+  creditsHeading: "Багийн гишүүд",
   installTitle: "Next Gen Worship Beta суулгах",
   installSub: "Next Gen Worship Beta-г нүүр дэлгэц рүү нэмж, офлайн ашиглана уу",
   installSubInstalled: "Next Gen Worship Beta энэ төхөөрөмжид суулгагдсан байна",
@@ -66,6 +68,7 @@ window.SONGBOOK_LANG.mn = {
   toastEmailCopyFailed: "Хуулж чадсангүй — дээрх хаягийг гараар хуулна уу",
   scriptureVerse: "Хэн ч чамайг залуу хүн хэмээн дорд бүү үзэг. Харин чи итгэгч хүмүүст үг, зан байдал, хайр, итгэл хийгээд цэвэр ариун байдлаараа үлгэр дуурайл бол.",
   scriptureRef: "1 Тимот 4:12",
+  copyrightTerms: "Өмчлөгчийн эрх хамгаалагдсан, нууц мэдээлэл. Урьдчилан бичгээр зөвшөөрөл авалгүйгээр энэ аппликейшн болон түүний агуулгыг бүхэлд нь эсвэл хэсэгчлэн зөвшөөрөлгүй хуулах, өөрчлөх, дахин түгээхийг хориглоно.",
 
   navPlaylists: "Жагсаалт",
   playlistsTitle: "Дууны жагсаалт",

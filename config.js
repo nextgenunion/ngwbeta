@@ -7,10 +7,20 @@ window.SONGBOOK_APP_CONFIG = {
   orgName: "Next Gen Union",
   contactEmail: "uchkabol@gmail.com",
 
+  // Shown as icon links on the About page. Leave a value as "" to hide
+  // that icon — these are placeholder/dummy URLs for now, swap them for
+  // the real ones whenever they're ready.
   social: {
-    facebook: "",
-    youtube: "",
-    instagram: "",
-    website: "",
+    facebook: "https://facebook.com/ngworship",
+    youtube: "https://youtube.com/@ngworship",
+    instagram: "https://instagram.com/ngworship",
+    website: "https://ngworship.example.com",
   },
+
+  // Shown on the About page under "Credits". Each entry needs a name and
+  // role; add more objects to the array as more people join. Leave the
+  // array empty ([]) to hide the Credits section entirely.
+  credits: [
+    { name: "Uchkabol", role: "Project Lead" },
+  ],
 };

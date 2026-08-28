@@ -1,3 +1,11 @@
+<!--
+  NGWorship (Songbook)
+  Copyright (c) 2026 Next Gen Union. All rights reserved.
+
+  Proprietary and confidential. No part of this software or its content
+  may be copied, modified, or redistributed, in whole or in part, without
+  prior written permission from Next Gen Union. See LICENSE for full terms.
+-->
 <!DOCTYPE html>
 <html lang="mn" data-theme="light">
 <head>
@@ -5,6 +13,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>NGWorship Beta / Дууны ном</title>
 <meta name="description" content="Офлайнаар ажилладаг дууны ном / An offline-first worship songbook.">
+<meta name="copyright" content="© 2026 Next Gen Union. All rights reserved. Proprietary — no unauthorized copying, modification, or redistribution.">
 <meta name="theme-color" content="#1F2A44" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#F3F3F1" media="(prefers-color-scheme: light)">
 
@@ -260,30 +269,62 @@
 
   <section class="settings-section about-section">
     <h3 class="settings-heading" id="t-sectionAbout">About</h3>
-    <div class="about-block">
-      <img src="icons/about-logo.png" alt="" class="about-logo">
-      <p class="about-label" id="t-versionTitle">Version</p>
-      <p class="about-appname" id="about-version-line">Next Gen Worship Beta</p>
-      <p class="about-description" id="about-description">Offline songbook for Adventist Church.</p>
-      <p class="about-copyright" id="about-copyright"></p>
-      <a class="about-contact-btn" id="about-contact-btn" href="#">
-        <svg data-icon="contact-mail" viewBox="0 0 24 24"></svg>
-        <span id="t-contactBtn">Send feedback</span>
-      </a>
-      <div class="about-contact-fallback" id="about-contact-fallback" hidden>
-        <span id="about-contact-email"></span>
-        <button type="button" id="about-contact-copy" aria-label="Copy email address">
-          <svg data-icon="copy" viewBox="0 0 24 24"></svg>
-        </button>
+    <button type="button" class="settings-row settings-row-nav" id="about-nav-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="about-nav-title">Next Gen Worship Beta</span>
+        <span class="settings-row-sub" id="about-nav-sub">Version, credits, and social links</span>
       </div>
-      <div class="about-social" id="about-social"></div>
-    </div>
+      <svg class="settings-row-chevron" data-icon="back-arrow" viewBox="0 0 24 24"></svg>
+    </button>
   </section>
 
   <blockquote class="scripture-footer">
     <p id="scripture-verse-text"></p>
     <cite id="scripture-verse-ref"></cite>
   </blockquote>
+ </div>
+</main>
+
+<!-- ===== ABOUT PAGE ===== -->
+<main id="page-about" class="page" data-page="about" hidden>
+ <div class="page-inner">
+  <div class="song-view-topbar">
+    <span id="t-topbarAppName3">Дууны ном</span>
+  </div>
+
+  <header class="song-view-header pv-header">
+    <button id="about-back-btn" class="icon-btn" aria-label="Back to settings">
+      <svg data-icon="back-arrow" viewBox="0 0 24 24"></svg>
+    </button>
+    <div class="song-view-title">
+      <h2 id="t-sectionAbout2">About</h2>
+    </div>
+  </header>
+
+  <div class="about-block">
+    <img src="icons/about-logo.png" alt="" class="about-logo">
+    <p class="about-label" id="t-versionTitle">Version</p>
+    <p class="about-appname" id="about-version-line">Next Gen Worship Beta</p>
+    <p class="about-description" id="about-description">Offline songbook for Adventist Church.</p>
+    <p class="about-copyright" id="about-copyright"></p>
+    <p class="about-copyright-terms" id="about-copyright-terms"></p>
+    <a class="about-contact-btn" id="about-contact-btn" href="#">
+      <svg data-icon="contact-mail" viewBox="0 0 24 24"></svg>
+      <span id="t-contactBtn">Send feedback</span>
+    </a>
+    <div class="about-contact-fallback" id="about-contact-fallback" hidden>
+      <span id="about-contact-email"></span>
+      <button type="button" id="about-contact-copy" aria-label="Copy email address">
+        <svg data-icon="copy" viewBox="0 0 24 24"></svg>
+      </button>
+    </div>
+    <div class="about-social" id="about-social"></div>
+
+    <div class="about-credits" id="about-credits" hidden>
+      <p class="about-credits-heading" id="t-creditsHeading">Credits</p>
+      <ul class="about-credits-list" id="about-credits-list"></ul>
+    </div>
+  </div>
  </div>
 </main>
 
