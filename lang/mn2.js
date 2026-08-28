@@ -49,6 +49,7 @@ window.SONGBOOK_LANG.mn2 = {
   installedBadgeDone: "✓ ᠰᠠᠭᠤᠯᠭᠠᠭᠰᠠᠨ",
   versionTitle: "ᠬᠤᠪᠢᠯᠪᠤᠷᠢ",
   versionSub: (v) => `Next Gen Worship ${v}`,
+  appName: "Next Gen Worship",
   toastDbSaved: "ᠳᠠᠭᠤᠨ ᠤ᠋ ᠰᠠᠩ ᠤ᠋ᠨ ᠲᠣᢈᠢᠷᠠᠭ᠎ᠠ ᠶ᠋ᠢ ᠬᠠᠳᠠᠭᠠᠯᠠᠯ᠎ᠠ",
   toastIosHint: 'ᠬᠤᠪᠢᠶᠠᠯᠴᠠᠬᠤ ᠲᠣᠪᠴᠢ ᠳᠡᢉᠡᠷ᠎ᠡ ᠳᠠᠷᠤᠭᠠᠳ «ᠨᠢᠭᠤᠷ ᠳᠡᠯᢉᠡᠴᠡᠨ ᠳ᠋ᠦ ᠨᠡᠮᠡᢈᠦ"-ᠡᠶᠢ ᠶ᠋ᠢ ᠰᠣᠩᠭᠤᠨ᠎ᠠ ᠤᠤ',
   toastPressBackAgain: "ᠭᠠᠷᠬᠤ ᠶ᠋ᠢᠨ ᠲᠤᠯᠠᠳᠠ ᠪᠤᠴᠠᠬᠤ ᠲᠣᠪᠴᠢ ᠶ᠋ᠢ ᠳᠠᢈᠢᠨ ᠳᠠᠷᠤᠨ᠎ᠠ ᠤᠤ",
@@ -71,7 +72,7 @@ window.SONGBOOK_LANG.mn2 = {
   // NOTE: not yet translated into traditional Mongolian script — falls
   // back to modern Cyrillic (matching lang/mn.js) so the feature is fully
   // usable in this language pending a proper translation pass.
-  copyrightTerms: "Өмчлөгчийн эрх хамгаалагдсан, нууц мэдээлэл. Урьдчилан бичгээр зөвшөөрөл авалгүйгээр энэ аппликейшн болон түүний агуулгыг бүхэлд нь эсвэл хэсэгчлэн зөвшөөрөлгүй хуулах, өөрчлөх, дахин түгээхийг хориглоно.",
+  copyrightTerms: "Өмчлөгчийн эрх хамгаалагдсан. Урьдчилан бичгээр зөвшөөрөл авалгүйгээр энэ аппликейшн болон түүний агуулгыг бүхэлд нь эсвэл хэсэгчлэн зөвшөөрөлгүй хуулах, өөрчлөх, дахин түгээхийг хориглоно.",
   navPlaylists: "Жагсаалт",
   playlistsTitle: "Дууны жагсаалт",
   favoritesName: "Дуртай дуу",

@@ -53,6 +53,7 @@ window.SONGBOOK_LANG.en = {
   installedBadgeDone: "✓ Installed",
   versionTitle: "Version",
   versionSub: (v) => `Next Gen Worship ${v}`,
+  appName: "Next Gen Worship",
   toastDbSaved: "Database preference saved",
   toastIosHint: 'Tap Share, then "Add to Home Screen"',
   toastPressBackAgain: "Press back again to exit",

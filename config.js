@@ -17,10 +17,13 @@ window.SONGBOOK_APP_CONFIG = {
     website: "https://ngworship.example.com",
   },
 
-  // Shown on the About page under "Credits". Each entry needs a name and
-  // role; add more objects to the array as more people join. Leave the
-  // array empty ([]) to hide the Credits section entirely.
+  // Shown on the About page under "Credits", as "Role — Name" (e.g.
+  // "Project Lead — Uchkabol"). `role` here is really "what they worked
+  // on / contributed" (a role title, or a specific contribution like
+  // "Suggested the idea") — shown first, above the name. Add more
+  // objects to the array as more people join. Leave the array empty
+  // ([]) to hide the Credits section entirely.
   credits: [
-    { name: "Uchkabol", role: "Project Lead" },
+    { role: "Project Lead", name: "Uchkabol" },
   ],
 };

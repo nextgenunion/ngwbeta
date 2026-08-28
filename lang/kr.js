@@ -49,6 +49,7 @@ window.SONGBOOK_LANG.kr = {
   installedBadgeDone: "✓ 설치됨",
   versionTitle: "버전",
   versionSub: (v) => `Next Gen Worship ${v}`,
+  appName: "Next Gen Worship",
   toastDbSaved: "찬양집 설정이 저장되었습니다",
   toastIosHint: '공유 버튼을 누른 후 "홈 화면에 추가"를 선택하세요',
   toastPressBackAgain: "종료하려면 뒤로 버튼을 한 번 더 누르세요",

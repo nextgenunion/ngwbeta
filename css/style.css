@@ -968,17 +968,17 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   display: flex;
   align-items: baseline;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 0.86rem;
 }
-.about-credits-name { font-weight: 600; color: var(--ink); }
-.about-credits-role { color: var(--ink-faint); font-size: 0.8rem; }
+.about-credits-role { font-weight: 600; color: var(--ink); }
+.about-credits-name { color: var(--ink-faint); font-size: 0.8rem; }
+.about-credits-name::before { content: "— "; }
 
 .about-contact-btn {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-top: 16px;
   padding: 10px 18px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -989,6 +989,13 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 }
 .about-contact-btn:not([hidden]) { display: inline-flex; }
 .about-contact-btn svg { width: 16px; height: 16px; fill: currentColor; }
+
+.about-contact-section {
+  margin-top: 20px;
+  padding: 20px 16px 24px;
+  text-align: center;
+  border-top: 1px solid var(--line);
+}
 
 .about-contact-fallback {
   align-items: center;

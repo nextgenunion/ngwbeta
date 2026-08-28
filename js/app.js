@@ -267,8 +267,8 @@ function renderCredits() {
   section.hidden = false;
   list.innerHTML = credits.map(c => `
     <li class="about-credits-item">
-      <span class="about-credits-name">${escapeHtml(c.name || '')}</span>
       <span class="about-credits-role">${escapeHtml(c.role || '')}</span>
+      <span class="about-credits-name">${escapeHtml(c.name || '')}</span>
     </li>`).join('');
 }
 
@@ -802,7 +802,7 @@ function applyLanguage() {
 
   document.getElementById('empty-state').textContent = t('emptyState');
   document.getElementById('about-version-line').textContent = t('versionSub', APP_VERSION);
-  document.getElementById('about-nav-title').textContent = t('versionSub', APP_VERSION);
+  document.getElementById('about-nav-title').textContent = t('appName');
   document.getElementById('scripture-verse-text').textContent = `«${t('scriptureVerse')}»`;
   document.getElementById('scripture-verse-ref').textContent = t('scriptureRef');
 
