@@ -1,3 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-  <path d="M15.5 4.5a1 1 0 010 1.414L9.914 11.5H19a1 1 0 110 2H9.914l5.586 5.586a1 1 0 11-1.414 1.414l-7-7a1 1 0 010-1.414l7-7a1 1 0 011.414 0z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor">
+  <!-- Google Material Symbols "arrow_back" (Apache License 2.0),
+       https://github.com/google/material-design-icons — replaces an
+       earlier hand-drawn approximation, for consistency with the other
+       icons already swapped to real source artwork. -->
+  <path d="m313-440 224 224-57 56-320-320 320-320 57 56-224 224h487v80H313Z"/>
 </svg>

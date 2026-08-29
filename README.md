@@ -1,4 +1,4 @@
-# Next Gen Worship Beta — Worship Song App (Beta v2.0.14 — Playlists, Favorites, Chord Visibility)
+# Next Gen Worship — Worship Song App (v2.0.23-beta — Playlists, Favorites, Chord Visibility)
 
 An offline-first worship songbook PWA. Static HTML/CSS/JS, no build step, no
 backend — built to run on GitHub Pages and install like a native app.
@@ -193,6 +193,44 @@ Install row in Settings explains this instead of showing a dead button.
    subpath — no path edits needed.
 5. GitHub Pages serves everything over HTTPS automatically, which is exactly
    what the service worker and Install button need to work.
+
+### Versioning scheme
+
+Version numbers follow **major.significant.minor** (three numbers,
+dot-separated — e.g. `2.0.23`), with an optional pre-release tag appended
+after a hyphen when the build isn't a stable release — e.g. `2.0.23-beta`.
+Put together, the full on-screen version reads **v2.0.23-beta**.
+
+- **major** — a rewrite-level change: the app's core architecture, data
+  model, or shape changes enough that it's really a new generation of the
+  app rather than an update to the current one. Bumped rarely.
+- **significant** — a real feature lands: something a user would notice
+  and describe as "the app can now do X" (Playlists and Favorites, for
+  instance, were what bumped this app to `2.0`). Resets `minor` to `0`.
+- **minor** — everything else that ships: bug fixes, polish, small
+  behavior changes, copy/wording tweaks — the number that moves on
+  ordinary day-to-day updates. This is what `SONGBOOK_VERSION_NUMBER`'s
+  comment means by "every release that ships changed files."
+- **pre-release tag** (optional, after the hyphen) — where the build sits
+  on the way to a stable release, oldest to newest:
+  - `alpha` — early, unstable, still actively taking shape; expect things
+    to be missing or broken.
+  - `beta` — feature-complete for that version and generally stable, but
+    still being tested and polished before it's considered done.
+  - `rc` (release candidate) — believed ready; final verification pass
+    before dropping the tag entirely for a stable release. If nothing
+    turns up, this exact build ships as the stable release.
+  - *(no tag)* — stable. This is what a version number with nothing after
+    it means: not "untested," but "past all of the above."
+
+Set via `SONGBOOK_VERSION_PRERELEASE` in `version.js` (e.g. `'beta.1'`,
+`'rc.1'`, or `''` for stable). The trailing `.1` is a build number within
+that stage — bump it (`'beta.2'`, `'beta.3'`, …) for a re-cut of the same
+pre-release stage that doesn't warrant moving `SONGBOOK_VERSION_NUMBER`
+itself, so `CACHE_VERSION` still changes and devices still pick up the new
+build. The on-screen label only shows the stage name (`-beta`, `-rc`), not
+the build number — that distinction only needs to be visible in the cache
+tag, not to the person using the app.
 
 ### Updating the app later
 

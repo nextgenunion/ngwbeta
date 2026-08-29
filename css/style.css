@@ -411,6 +411,16 @@ body.nav-hidden .page-inner {
   overflow: hidden;
   pointer-events: none;
   z-index: 5;
+  /* Fades in/out rather than the [hidden] attribute snapping the whole
+     strip away instantly — see initChristmasSnow()'s fadeOutThenHide()
+     in app.js, which toggles .christmas-snow-hiding to start this
+     transition before actually setting [hidden]. */
+  opacity: 1;
+  transition: opacity 2.4s ease;
+}
+.christmas-snow.christmas-snow-hiding { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .christmas-snow { transition: none; }
 }
 .snowflake {
   position: absolute;
@@ -622,7 +632,13 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 }
 .icon-btn {
   flex-shrink: 0;
-  width: 38px; height: 38px;
+  /* Was 38px — a small step up rather than jumping straight to the
+     textbook 44px "recommended minimum" (Apple HIG / Material Design):
+     at this app's actual screen density, 44px reads as noticeably chunky
+     against the rest of the UI's fairly compact visual language. 40px is
+     a real, if modest, improvement in tap comfort without changing how
+     the app looks and feels. */
+  width: 40px; height: 40px;
   border-radius: 50%;
   border: 1px solid var(--line);
   background: var(--surface);
@@ -637,8 +653,27 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
    before, pushing long titles to an extra wrapped line. Trimming just
    these two (not every icon-btn — the back button stays full-size, same
    as playlist-view's) claws a little of that width back for the title
-   without shrinking anything the person actually taps most. */
-#sv-favorite-btn, #sv-add-playlist-btn { width: 34px; height: 34px; }
+   without shrinking anything the person actually taps most.
+   Keeping the VISIBLE circle small (unchanged) while still growing the
+   tappable area a bit: ::after adds an invisible, larger hit area
+   centered on the same button, without affecting layout — the button
+   itself still only takes up 34px of flex width, so the title-space
+   trade-off above still holds; only what your thumb can actually land on
+   grows. Matches .icon-btn's 40px above rather than a larger textbook
+   figure, for the same "keep it proportionate to this app" reasoning.
+   `position: relative` on the button is required for this to be
+   positioned against the button itself, not some other ancestor. */
+#sv-favorite-btn, #sv-add-playlist-btn {
+  width: 34px; height: 34px;
+  position: relative;
+}
+#sv-favorite-btn::after, #sv-add-playlist-btn::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 40px; height: 40px;
+  transform: translate(-50%, -50%);
+}
 #sv-favorite-btn svg, #sv-add-playlist-btn svg { width: 18px; height: 18px; }
 
 .song-view-title { flex: 1; min-width: 0; padding-top: 2px; }
@@ -700,7 +735,12 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 }
 
 .chip-btn {
-  width: 30px; height: 30px;
+  /* Was 30px — under the ~44px comfortable-tap-target guideline. The
+     transpose bar (.transpose-bar) has real room to spare (space-between
+     layout, not tightly packed like the song header), so this can just
+     grow directly rather than needing the invisible-hit-area trick used
+     on the song header's favorite/add-playlist buttons above. */
+  width: 40px; height: 40px;
   border-radius: 50%;
   border: 1px solid var(--line);
   background: var(--paper);
@@ -908,9 +948,23 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   text-align: left;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  /* .settings-row (above) allows wrapping for rows with action buttons
+     that may need their own line on a narrow screen — but this row is
+     always exactly [text, chevron], and the chevron must never wrap onto
+     its own line below the text (that's what pushed it down-and-left
+     instead of staying pinned at the right, vertically centered). */
+  flex-wrap: nowrap;
 }
 .settings-section .settings-heading + .settings-row-nav { border-top: none; }
 .settings-row-nav:active { background: var(--paper-dim); }
+.settings-row-nav .settings-row-text {
+  /* Let the text take up the remaining space instead of sizing to its
+     own content — without this, a longer sub-line (e.g. "Version,
+     credits, and social links") could push the row wider than its
+     container, which is exactly what forced the chevron to wrap. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .settings-row-chevron {
   width: 16px;
   height: 16px;
@@ -935,7 +989,7 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 .about-appname { margin: 3px 0 0; font-family: var(--font-display); font-size: 1.02rem; font-weight: 600; color: var(--ink); }
 .about-description { margin: 4px 0 0; font-size: 0.86rem; color: var(--ink-soft); }
 .about-copyright { margin: 8px 0 0; font-size: 0.86rem; color: var(--ink-soft); }
-.about-copyright-terms { margin: 4px 0 0; font-size: 0.74rem; line-height: 1.4; color: var(--ink-soft); opacity: 0.8; }
+.about-copyright-terms { margin: 4px 0 0; font-size: 0.68rem; line-height: 1.4; color: var(--ink-soft); }
 .about-social { display: flex; justify-content: center; gap: 14px; margin-top: 16px; }
 .about-social:empty { margin-top: 0; }
 .about-social a {
@@ -976,38 +1030,15 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 .about-credits-name::before { content: "— "; }
 
 .about-contact-btn {
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  color: var(--accent-strong);
-  font-weight: 600;
-  font-size: 0.86rem;
+  color: inherit;
   text-decoration: none;
 }
-.about-contact-btn:not([hidden]) { display: inline-flex; }
-.about-contact-btn svg { width: 16px; height: 16px; fill: currentColor; }
-
-.about-contact-section {
-  margin-top: 20px;
-  padding: 20px 16px 24px;
-  text-align: center;
-  border-top: 1px solid var(--line);
+.about-contact-mail-icon {
+  /* This row reuses .settings-row-chevron for sizing/color/spacing, but
+     it's a mail icon here, not a back-arrow — undo the chevron's flip. */
+  transform: none;
 }
 
-.about-contact-fallback {
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-.about-contact-fallback:not([hidden]) { display: flex; }
-.about-contact-fallback span {
-  font-size: 0.8rem;
-  color: var(--ink-faint);
-}
 .about-contact-fallback button {
   display: flex;
   align-items: center;

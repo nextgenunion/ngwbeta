@@ -56,6 +56,15 @@ function markVersionSeen() {
 // redundant reload after every single normal update — the mismatch here
 // used to only ever get cleared by this same block, so it could never tell
 // "a normal path just updated this" apart from "nothing ever has".
+//
+// This wipes EVERY cache bucket, including the separate offline-fallback
+// one (see OFFLINE_CACHE in service-worker.js) — deliberately: this path
+// only runs when something is stale/wrong enough to need a full reset, so
+// it shouldn't leave anything behind, offline.html included. The
+// reload this triggers re-registers the service worker, whose install
+// step repopulates OFFLINE_CACHE immediately after — the only real gap is
+// the reload itself failing while genuinely offline, which no caching
+// strategy can paper over.
 (function hardUpdateBackstop() {
   try {
     const seen = localStorage.getItem(SEEN_VERSION_KEY);
@@ -126,8 +135,8 @@ const PAGES = {
   'song-view':      { elId: 'page-song-view',      navKey: 'songs',     rememberScroll: false, hideNav: true },
   'playlists':      { elId: 'page-playlists',      navKey: 'playlists', rememberScroll: true,  onEnter: () => renderPlaylistsList() },
   'playlist-view':  { elId: 'page-playlist-view',  navKey: 'playlists', rememberScroll: false, hideNav: true },
-  'settings':       { elId: 'page-settings',       navKey: 'settings',  rememberScroll: true },
-  'about':          { elId: 'page-about',          navKey: 'settings',  rememberScroll: false, hideNav: true, onEnter: () => resetContactUI() },
+  'settings':       { elId: 'page-settings',       navKey: 'settings',  rememberScroll: true,  onEnter: () => resetContactUI() },
+  'about':          { elId: 'page-about',          navKey: 'settings',  rememberScroll: false, hideNav: true },
 };
 
 // Pages that open "on top of" another page (a song out of the songbook or
@@ -482,6 +491,9 @@ async function loadSongData() {
     // Most likely cause if there's no backup either: the app was opened
     // directly from disk (file://), where browsers block fetch() of local
     // files. Serving it over http(s) — even just localhost — resolves this.
+    // (Dev-facing note only — songLoadError below is the plain, actionless
+    // message an actual end user sees; it deliberately doesn't mention any
+    // of this, since there's nothing a real user could do about it.)
     source.songs = [];
     source.loadFailed = true;
   }
@@ -1664,7 +1676,6 @@ function toggleSongInPlaylist(playlistId, sourceKey, songId) {
 
 function toggleFavorite(sourceKey, songId) {
   const nowFav = toggleSongInPlaylist('favorites', sourceKey, songId);
-  showToast(nowFav ? t('toastAddedFavorites') : t('toastRemovedFavorites'));
   return nowFav;
 }
 
@@ -2666,17 +2677,26 @@ function registerServiceWorker() {
 // (#sabbath-mascot); look/animation in css/style.css (.sabbath-mascot).
 // ---------------------------------------------------------
 function isSabbathToday() {
-  // Sunday=0 ... Saturday=6, per the device's own local clock/timezone —
-  // there's no one global "Saturday", so this deliberately goes with
-  // whatever day it is wherever the person actually is.
+  // Sabbath runs Friday 7:00 PM through Saturday 8:00 PM, per the device's
+  // own local clock/timezone — there's no one global "Friday evening", so
+  // this deliberately goes with whatever time it is wherever the person
+  // actually is. (Previously just "is it Saturday" all day; narrowed to
+  // this window to better match when Sabbath is actually observed.)
   //
   // Testing hook: open the app with ?previewSabbath=1 in the URL (e.g.
   // index.html?previewSabbath=1) to force the mascot on regardless of
-  // what day it actually is — no need to change the device's clock just
-  // to preview it. Harmless to leave in; nobody stumbles into it by
+  // what day/time it actually is — no need to change the device's clock
+  // just to preview it. Harmless to leave in; nobody stumbles into it by
   // accident since it takes a deliberate query param.
   if (new URLSearchParams(location.search).get('previewSabbath') === '1') return true;
-  return new Date().getDay() === 6;
+  const now = new Date();
+  const day = now.getDay(); // Sunday=0 ... Friday=5, Saturday=6
+  const minutesOfDay = now.getHours() * 60 + now.getMinutes();
+  const FRIDAY_START = 19 * 60;     // 7:00 PM
+  const SATURDAY_END = 20 * 60;     // 8:00 PM
+  if (day === 5) return minutesOfDay >= FRIDAY_START;
+  if (day === 6) return minutesOfDay < SATURDAY_END;
+  return false;
 }
 
 function updateSabbathMascotText() {
@@ -2724,34 +2744,73 @@ function initChristmasSnow() {
   const el = document.getElementById('christmas-snow');
   if (!el) return;
 
-  const show = isChristmasWeek();
-  el.hidden = !show;
-  if (!show) { el.innerHTML = ''; return; }
-  if (el.childElementCount) return; // already built for this session
+  // Poll like the Sabbath mascot below — covers the app being left open
+  // across the moment Christmas week actually ends (or, for previewing,
+  // across a manual system-clock change), so the fade-out is something a
+  // person could actually see happen rather than only ever applying
+  // silently on next load.
+  const CHECK_INTERVAL = 5 * 60 * 1000;
+  let fadeOutTimer = null;
 
-  // Built once as plain positioned/animated <span>s (no canvas/JS-driven
-  // rAF loop needed for something this simple) — each flake gets a
-  // randomized horizontal position, size, fall speed, start delay, drift,
-  // and opacity so the field doesn't look mechanically uniform.
-  const COUNT = 20;
-  const frag = document.createDocumentFragment();
-  for (let i = 0; i < COUNT; i++) {
-    const flake = document.createElement('span');
-    flake.className = 'snowflake';
-    const size = 3 + Math.random() * 4; // 3–7px
-    const duration = 7 + Math.random() * 6; // 7–13s to fall through the strip
-    const delay = Math.random() * duration; // stagger start so they don't fall in sync
-    const drift = (Math.random() * 30 - 15).toFixed(1); // -15..15px sideways over the fall
-    flake.style.left = `${(Math.random() * 100).toFixed(1)}%`;
-    flake.style.width = `${size}px`;
-    flake.style.height = `${size}px`;
-    flake.style.opacity = (0.3 + Math.random() * 0.45).toFixed(2);
-    flake.style.animationDuration = `${duration.toFixed(1)}s`;
-    flake.style.animationDelay = `-${delay.toFixed(1)}s`; // negative delay = starts mid-fall, so the strip isn't empty on first render
-    flake.style.setProperty('--drift', `${drift}px`);
-    frag.appendChild(flake);
-  }
-  el.appendChild(frag);
+  const buildFlakes = () => {
+    if (el.childElementCount) return; // already built for this session
+    // Built once as plain positioned/animated <span>s (no canvas/JS-driven
+    // rAF loop needed for something this simple) — each flake gets a
+    // randomized horizontal position, size, fall speed, start delay, drift,
+    // and opacity so the field doesn't look mechanically uniform.
+    const COUNT = 20;
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < COUNT; i++) {
+      const flake = document.createElement('span');
+      flake.className = 'snowflake';
+      const size = 3 + Math.random() * 4; // 3–7px
+      const duration = 7 + Math.random() * 6; // 7–13s to fall through the strip
+      const delay = Math.random() * duration; // stagger start so they don't fall in sync
+      const drift = (Math.random() * 30 - 15).toFixed(1); // -15..15px sideways over the fall
+      flake.style.left = `${(Math.random() * 100).toFixed(1)}%`;
+      flake.style.width = `${size}px`;
+      flake.style.height = `${size}px`;
+      flake.style.opacity = (0.3 + Math.random() * 0.45).toFixed(2);
+      flake.style.animationDuration = `${duration.toFixed(1)}s`;
+      flake.style.animationDelay = `-${delay.toFixed(1)}s`; // negative delay = starts mid-fall, so the strip isn't empty on first render
+      flake.style.setProperty('--drift', `${drift}px`);
+      frag.appendChild(flake);
+    }
+    el.appendChild(frag);
+  };
+
+  const refresh = () => {
+    const show = isChristmasWeek();
+
+    if (show) {
+      // Coming back on (e.g. the clock rolled back during a preview, or
+      // this is the very first check) — cancel any fade-out in progress
+      // and show immediately; only the ending needs to be gentle.
+      if (fadeOutTimer) { clearTimeout(fadeOutTimer); fadeOutTimer = null; }
+      el.hidden = false;
+      el.classList.remove('christmas-snow-hiding');
+      buildFlakes();
+      return;
+    }
+
+    if (el.hidden) return; // already fully hidden, nothing to fade
+    if (fadeOutTimer) return; // fade already in progress
+
+    // Start the fade (CSS transition on .christmas-snow-hiding, see
+    // style.css) rather than snapping straight to [hidden] — that's the
+    // instant cut this replaces. Only actually hide + clear the flakes
+    // once the transition has had time to finish.
+    el.classList.add('christmas-snow-hiding');
+    fadeOutTimer = setTimeout(() => {
+      el.hidden = true;
+      el.classList.remove('christmas-snow-hiding');
+      el.innerHTML = '';
+      fadeOutTimer = null;
+    }, 2500); // slightly longer than style.css's 2.4s transition
+  };
+
+  refresh();
+  setInterval(refresh, CHECK_INTERVAL);
 }
 
 // ---------------------------------------------------------

@@ -12,6 +12,23 @@
 importScripts('./version.js');
 const CACHE_VERSION = self.SONGBOOK_CACHE_VERSION;
 
+// Separate, fixed-name cache just for the offline fallback page. Deliberately
+// NOT part of CACHE_VERSION (the main versioned cache) for two reasons:
+//
+// 1. activate() below deletes every cache bucket except the current
+//    CACHE_VERSION, to drop stale versions on update. If offline.html lived
+//    in that same bucket, a wipe of the main cache (a full "clear site
+//    data", or the person clearing their browser cache/storage by hand)
+//    would take offline.html down with it — so the one time it's actually
+//    needed most (this device has nothing left cached), it wouldn't be
+//    there either, and the fetch handler's fallback would silently resolve
+//    to nothing instead of the offline screen.
+// 2. Because this bucket's name never changes between versions, it isn't
+//    touched by the version-rotation cleanup at all — it survives updates
+//    the same way it survives a manual cache clear, without needing to be
+//    re-downloaded on every single version bump.
+const OFFLINE_CACHE = 'songbook-offline-fallback';
+
 // The core shell: without any one of these the app can't run at all, so
 // these are cached atomically — if even one fails, the whole install fails
 // and the OLD service worker (and its cache) stays in control until a
@@ -19,7 +36,6 @@ const CACHE_VERSION = self.SONGBOOK_CACHE_VERSION;
 const CORE_SHELL = [
   './',
   './index.html',
-  './offline.html',
   './manifest.json',
   './version.js',
   './css/style.css',
@@ -84,17 +100,31 @@ self.addEventListener('install', (event) => {
   // for the install to succeed. A slow or interrupted install is exactly
   // the kind of thing aggressive mobile battery/task managers cut short —
   // keeping this fast is what makes the install itself reliable.
+  //
+  // offline.html goes into its own OFFLINE_CACHE bucket (see the comment
+  // by its declaration above), cached alongside the core shell but kept
+  // as a fully separate step — if it fails for some reason, the core
+  // shell install (the one thing that's required to succeed) isn't put
+  // at risk by it.
   event.waitUntil(
-    caches.open(CACHE_VERSION)
-      .then((cache) => cache.addAll(CORE_SHELL))
-      .then(() => self.skipWaiting())
+    Promise.all([
+      caches.open(CACHE_VERSION).then((cache) => cache.addAll(CORE_SHELL)),
+      caches.open(OFFLINE_CACHE).then((cache) => cache.addAll(['./offline.html'])),
+    ]).then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)))
+      // Drop every cache bucket except the current version's and the
+      // offline-fallback one — anything else is a stale versioned cache
+      // left over from before an update. OFFLINE_CACHE is deliberately
+      // exempt here even though its name never changes: this cleanup is
+      // about dropping old *versions*, not about deciding what belongs
+      // in the current one, and offline.html isn't part of CACHE_VERSION
+      // at all (see the comment on OFFLINE_CACHE above).
+      Promise.all(keys.filter((k) => k !== CACHE_VERSION && k !== OFFLINE_CACHE).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 
@@ -163,14 +193,20 @@ self.addEventListener('fetch', (event) => {
           // Nothing cached AND the network failed. For a page navigation,
           // this is the case that used to fall through to the browser's
           // own generic "no internet" page — jarring in an installed app.
-          // Show our own offline screen instead (also core-shell cached,
-          // so it's always available). Any other kind of request (a
-          // script, an image, song data) just fails as before; the app's
-          // own code already handles those (e.g. loadSongData()'s
-          // IndexedDB fallback).
+          // Show our own offline screen instead (cached separately in its
+          // own bucket — see OFFLINE_CACHE above — specifically so it
+          // survives even if this main cache is empty or was just wiped).
+          // Any other kind of request (a script, an image, song data)
+          // just fails as before; the app's own code already handles
+          // those (e.g. loadSongData()'s IndexedDB fallback).
           const isNavigation = event.request.mode === 'navigate'
             || event.request.destination === 'document';
-          return isNavigation ? caches.match('./offline.html') : undefined;
+          // Read from OFFLINE_CACHE specifically (not a plain caches.match,
+          // which would search every bucket) — this is the one thing that
+          // has to keep working even if CACHE_VERSION's bucket is gone
+          // entirely, so it shouldn't depend on default cross-cache lookup
+          // behavior to find it.
+          return isNavigation ? caches.open(OFFLINE_CACHE).then((cache) => cache.match('./offline.html')) : undefined;
         });
 
       return cached || networkFetch;
