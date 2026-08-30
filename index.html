@@ -276,18 +276,17 @@
       </div>
       <svg class="settings-row-chevron" data-icon="back-arrow" viewBox="0 0 24 24"></svg>
     </button>
-  </section>
-
-  <section class="settings-section about-contact-section">
-    <a class="about-contact-btn" id="about-contact-btn" href="#">
-      <svg data-icon="contact-mail" viewBox="0 0 24 24"></svg>
-      <span id="t-contactBtn">Send feedback</span>
-    </a>
-    <div class="about-contact-fallback" id="about-contact-fallback" hidden>
-      <span id="about-contact-email"></span>
-      <button type="button" id="about-contact-copy" aria-label="Copy email address">
-        <svg data-icon="copy" viewBox="0 0 24 24"></svg>
-      </button>
+    <div class="about-contact-wrap">
+      <a class="about-contact-btn" id="about-contact-btn" href="#">
+        <svg data-icon="contact-mail" viewBox="0 0 24 24"></svg>
+        <span id="t-contactBtn">Send feedback</span>
+      </a>
+      <div class="about-contact-fallback" id="about-contact-fallback" hidden>
+        <span id="about-contact-email"></span>
+        <button type="button" id="about-contact-copy" aria-label="Copy email address">
+          <svg data-icon="copy" viewBox="0 0 24 24"></svg>
+        </button>
+      </div>
     </div>
   </section>
 
@@ -319,8 +318,6 @@
     <p class="about-label" id="t-versionTitle">Version</p>
     <p class="about-appname" id="about-version-line">Next Gen Worship Beta</p>
     <p class="about-description" id="about-description">Offline songbook for Adventist Church.</p>
-    <p class="about-copyright" id="about-copyright"></p>
-    <p class="about-copyright-terms" id="about-copyright-terms"></p>
     <div class="about-social" id="about-social"></div>
 
     <div class="about-credits" id="about-credits" hidden>
@@ -329,6 +326,11 @@
     </div>
   </div>
  </div>
+
+ <footer class="about-legal-footer">
+   <p class="about-copyright" id="about-copyright"></p>
+   <p class="about-copyright-terms" id="about-copyright-terms"></p>
+ </footer>
 </main>
 
 

@@ -697,7 +697,15 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   padding: 10px 14px;
   margin-top: 14px;
 }
-.transpose-label { font-size: 0.88rem; color: var(--ink-soft); }
+/* min-width sized for the longest realistic key text this can ever show
+   (root + optional accidental + optional "m" — "A#m", "Ebm", etc., ~4
+   characters). Without this, justify-content: space-between on the bar
+   above recalculates the gap between the label and .transpose-controls
+   every time the key text's length changes, so tapping +/- to transpose
+   into a key with a sharp/flat/minor suffix visibly shifted the whole
+   button group sideways. Reserving the space up front means the controls
+   stay in the same spot no matter which key is showing. */
+.transpose-label { font-size: 0.88rem; color: var(--ink-soft); min-width: 92px; }
 .transpose-label strong { color: var(--ink); font-family: var(--font-mono); }
 .transpose-controls { display: flex; align-items: center; gap: 8px; }
 .transpose-offset {
@@ -972,7 +980,36 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 .about-label { margin: 0; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); }
 .about-appname { margin: 3px 0 0; font-family: var(--font-display); font-size: 1.02rem; font-weight: 600; color: var(--ink); }
 .about-description { margin: 4px 0 0; font-size: 0.86rem; color: var(--ink-soft); }
-.about-copyright { margin: 8px 0 0; font-size: 0.86rem; color: var(--ink-soft); }
+/* Fixed footer, always visible at the bottom of the About page regardless
+   of scroll position — a sibling of .page-inner (not inside it), so it
+   sits outside that element's own scrolling and can be positioned against
+   the viewport the same way .page itself is (see .page's own position:
+   fixed above). Scoped to #page-about specifically via the parent
+   selector — not a page-wide footer, only this one page has it. */
+#page-about .about-legal-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 15;
+  padding: 10px 18px calc(env(safe-area-inset-bottom) + 10px);
+  text-align: center;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border-top: 1px solid var(--line);
+}
+/* The page's own scrollable content needs its bottom padding increased by
+   however tall the fixed footer above actually is, or the footer would
+   permanently cover the last couple of lines of credits/socials. This
+   page has no bottom nav (hideNav: true — see PAGES in app.js), so unlike
+   .page-inner's default rule (which reserves space for --nav-h), this
+   only needs to clear the footer's own height plus the safe-area inset
+   already baked into the footer's own padding above. */
+#page-about .page-inner {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom) + 16px);
+}
+.about-copyright { margin: 0; font-size: 0.86rem; color: var(--ink-soft); }
 .about-copyright-terms { margin: 4px 0 0; font-size: 0.68rem; line-height: 1.4; color: var(--ink-soft); }
 .about-social { display: flex; justify-content: center; gap: 14px; margin-top: 16px; }
 .about-social:empty { margin-top: 0; }
@@ -1028,9 +1065,15 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 .about-contact-btn:not([hidden]) { display: inline-flex; }
 .about-contact-btn svg { width: 16px; height: 16px; fill: currentColor; }
 
-.about-contact-section {
+.about-contact-wrap {
   text-align: center;
   padding: 18px 16px;
+  /* Sits inside the SAME .about-section card as the About row above it
+     (not a second, separate card floating below) — this border is what
+     visually separates the two rows from each other while keeping them
+     together as one continuous section, same border treatment as any
+     .settings-row divider in this file. */
+  border-top: 1px solid var(--line);
 }
 
 .about-contact-fallback {

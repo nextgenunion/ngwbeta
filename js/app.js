@@ -2228,7 +2228,15 @@ function openAddToPlaylistModal(sourceKey, songId) {
 
   const renderItems = () => {
     list.innerHTML = '';
-    state.playlists.order.filter(id => state.playlists.byId[id]).forEach(id => {
+    // Favorites is deliberately excluded here: it already has its own
+    // dedicated heart button right on this same song page (see
+    // #sv-favorite-btn), so offering a second way to do the same thing
+    // from inside this "add to a playlist" picker is redundant — and
+    // worse, easy to mix up with an actual playlist since it renders in
+    // the same list. This modal is only ever opened from that song-page
+    // "+" button (see openAddToPlaylistModal's call sites), so filtering
+    // it out here doesn't affect Favorites anywhere else in the app.
+    state.playlists.order.filter(id => state.playlists.byId[id] && !state.playlists.byId[id].isFavorites).forEach(id => {
       const pl = state.playlists.byId[id];
       const inIt = isSongInPlaylist(id, sourceKey, songId);
       const li = document.createElement('li');
