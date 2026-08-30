@@ -250,9 +250,26 @@ button, a {
      scrolls; `fixed` specifically is a known janky/expensive combination
      with overflow:auto scrolling containers on iOS Safari, so this avoids
      that entirely. */
+  /* Three color stops per gradient (bright core → a mid-tone at 45% →
+     fully faded at ~77%), not two — a straight bright-to-transparent
+     gradient fades out quickly near its edge, which made earlier passes
+     at this feel like they only tinted the very top of the screen even
+     with a large radius. The extra middle stop holds real color much
+     further out before the fade begins, so the tint visibly carries past
+     the halfway point of a typical phone screen while still ending
+     smoothly rather than with a hard edge.
+     Mixed toward var(--paper), not toward transparent — mixing straight
+     accent-vs-transparent puts the *raw, fully-saturated* accent color at
+     full strength wherever the gradient is brightest, which reads as a
+     punchy, saturated wash rather than a pastel one. Blending toward
+     paper first is what actually produces a pastel: closer to white in
+     light mode (bright, soft, low-saturation tint) and a muted glow
+     against dark mode's near-black paper (dim, soft, not a neon wash) —
+     the same technique, correct in both themes because it's relative to
+     each theme's own paper rather than a fixed light or dark target. */
   background:
-    radial-gradient(1100px 560px at 12% -8%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 60%),
-    radial-gradient(900px 500px at 105% 5%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 58%),
+    radial-gradient(1300px 1050px at 15% -15%, color-mix(in srgb, var(--accent) 38%, var(--paper)), color-mix(in srgb, var(--accent) 20%, var(--paper)) 45%, var(--paper) 78%),
+    radial-gradient(1100px 950px at 100% -5%, color-mix(in srgb, var(--accent) 32%, var(--paper)), color-mix(in srgb, var(--accent) 16%, var(--paper)) 45%, var(--paper) 76%),
     var(--paper);
 }
 .page-inner {
