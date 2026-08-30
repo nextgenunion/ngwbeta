@@ -31,7 +31,7 @@
 }
 
 :root {
-  --paper:        #F3F3F1;
+  --paper:        #FFFFFF;
   --paper-dim:     #E7E7E3;
   --ink:          #23262F;
   --ink-soft:     #4B4E58;
@@ -268,8 +268,8 @@ button, a {
      the same technique, correct in both themes because it's relative to
      each theme's own paper rather than a fixed light or dark target. */
   background:
-    radial-gradient(1300px 1050px at 15% -15%, color-mix(in srgb, var(--accent) 38%, var(--paper)), color-mix(in srgb, var(--accent) 20%, var(--paper)) 45%, var(--paper) 78%),
-    radial-gradient(1100px 950px at 100% -5%, color-mix(in srgb, var(--accent) 32%, var(--paper)), color-mix(in srgb, var(--accent) 16%, var(--paper)) 45%, var(--paper) 76%),
+    radial-gradient(1300px 1050px at 15% -15%, color-mix(in srgb, var(--accent) 42%, var(--paper)), color-mix(in srgb, var(--accent) 22%, var(--paper)) 45%, var(--paper) 78%),
+    radial-gradient(1100px 950px at 100% -5%, color-mix(in srgb, var(--accent) 35%, var(--paper)), color-mix(in srgb, var(--accent) 18%, var(--paper)) 45%, var(--paper) 76%),
     var(--paper);
 }
 .page-inner {
