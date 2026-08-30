@@ -18,7 +18,7 @@ window.SONGBOOK_LANG.mn = {
   navSettings: "Тохиргоо",
   backAria: "Дуунуудын жагсаалт руу буцах",
   keyLabel: "Тональ:",
-  transposeReset: "Дахин тохируулах",
+  transposeReset: "Буцаах",
   lyricsGroup: "Үг",
   chordsGroup: "Аккорд",
   settingsTitle: "Тохиргоо",

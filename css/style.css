@@ -749,20 +749,30 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 .chip-btn:active { background: var(--accent-tint); }
 .chip-btn:disabled { opacity: .35; cursor: not-allowed; }
 .chip-btn:disabled:active { background: var(--paper); }
-/* transpose-reset ("Дахин тохируулах" / "Retranspose"): a short WORD, not
-   a single glyph, so this needs to be a pill sized to its own text —
-   width: auto here is what makes that happen. Long translated labels
-   (Mongolian's especially) still shouldn't look bigger than necessary:
-   the smaller font-size (0.75rem, down from chip-btn's 0.95rem) and
-   tight horizontal padding keep the pill snug around the actual text
-   instead of ballooning out. */
+/* transpose-reset ("Буцаах" / "Reset"): a short WORD, not a single glyph,
+   so this needs to be a pill sized to its own text — width: auto here is
+   what makes that happen. Long translated labels shouldn't look bigger
+   than necessary: the smaller font-size (0.75rem, down from chip-btn's
+   0.95rem) and tight horizontal padding keep the pill snug around the
+   actual text instead of ballooning out.
+   max-width + white-space: normal cap how wide this can grow — past that
+   cap the label wraps onto a second line and the button grows *taller*
+   instead of pushing past the edge of the transpose bar. height: auto
+   (overriding chip-btn's fixed 30px) plus min-height keeps single-line
+   labels looking identical to before while giving wrapped ones room to
+   extend downward. */
 .chip-btn-text {
   width: auto;
-  padding: 0 10px;
+  height: auto;
+  min-height: 30px;
+  padding: 5px 10px;
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 600;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.2;
+  max-width: 88px;
 }
 
 .font-controls {

@@ -45,7 +45,7 @@ const CORE_SHELL = [
   './lang/eng.js',
   './lang/mn.js',
   './lang/kr.js',
-  './lang/mn2.js',
+  // './lang/mn2.js', // temporarily hidden from the language picker (not loaded in index.html) — re-enable both together
 ];
 
 // Icons and other assets: cached best-effort, one at a time. A single
