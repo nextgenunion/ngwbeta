@@ -847,6 +847,11 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
+  /* Word tokens no longer carry their own embedded space character (see
+     renderLyrics in app.js) — column-gap replaces that spacing between
+     words on the same row; row-gap gives a little breathing room on the
+     rare line long enough to wrap within itself. */
+  gap: 4px 0.3em;
   margin-bottom: 4px;
   line-height: 1.15;
 }

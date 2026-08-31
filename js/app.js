@@ -1468,28 +1468,43 @@ function renderLyrics(opts = {}) {
       }
 
       tokens.forEach(tok => {
-        const wrap = document.createElement('span');
-        wrap.className = 'lyric-token';
-        if (tok.chord) {
-          const chordEl = document.createElement('span');
-          chordEl.className = 'chord-tag';
-          chordEl.textContent = transposeChord(tok.chord, state.transpose);
-          if (animateChords) {
-            chordEl.classList.add('chord-pop');
-            chordEl.style.setProperty('--chord-pop-delay', Math.min(chordAnimIndex * 12, 380) + 'ms');
-            chordAnimIndex += 1;
+        // A chord can cover a run of several words before the next chord
+        // change (e.g. "[G]word1 word2 word3"). Rendering that whole run
+        // as a single flex item bundles all its words into one unit for
+        // line-wrapping — and because flexbox decides what fits on a row
+        // using each item's full *unwrapped* width, not its ability to
+        // wrap internally, an entire multi-word run gets pushed to the
+        // next row even when only its last word doesn't fit, leaving a
+        // dead gap at the end of the row above. Splitting each run into
+        // one token per word (chord tag on the first word only) gives
+        // flex-wrap the same word-level granularity normal text has, so
+        // only the word that doesn't fit moves down — not the whole run.
+        const words = tok.text.split(/\s+/).filter(Boolean);
+        if (words.length === 0) words.push('');
+        words.forEach((word, i) => {
+          const wrap = document.createElement('span');
+          wrap.className = 'lyric-token';
+          if (i === 0 && tok.chord) {
+            const chordEl = document.createElement('span');
+            chordEl.className = 'chord-tag';
+            chordEl.textContent = transposeChord(tok.chord, state.transpose);
+            if (animateChords) {
+              chordEl.classList.add('chord-pop');
+              chordEl.style.setProperty('--chord-pop-delay', Math.min(chordAnimIndex * 12, 380) + 'ms');
+              chordAnimIndex += 1;
+            }
+            wrap.appendChild(chordEl);
+          } else if (word) {
+            const spacer = document.createElement('span');
+            spacer.className = 'chord-tag-spacer';
+            wrap.appendChild(spacer);
           }
-          wrap.appendChild(chordEl);
-        } else if (tok.text) {
-          const spacer = document.createElement('span');
-          spacer.className = 'chord-tag-spacer';
-          wrap.appendChild(spacer);
-        }
-        const textEl = document.createElement('span');
-        textEl.className = 'lyric-word';
-        textEl.textContent = tok.text || '\u00A0';
-        wrap.appendChild(textEl);
-        lineEl.appendChild(wrap);
+          const textEl = document.createElement('span');
+          textEl.className = 'lyric-word';
+          textEl.textContent = word || '\u00A0';
+          wrap.appendChild(textEl);
+          lineEl.appendChild(wrap);
+        });
       });
 
       sectionEl.appendChild(lineEl);
