@@ -64,7 +64,18 @@
   --radius-m: 14px;
   --radius-l: 22px;
 
+  /* Shared side margin for .page-inner (and anything, like the sticky
+     song-view topbar, that needs to break out to full-bleed and match it
+     exactly via a negative margin). Narrowed on small phones — see
+     override below — to reclaim reading width for the lyrics view;
+     kept at the original value on wider screens so cards don't crowd
+     the edge on tablets. */
+  --page-pad: 18px;
+
   color-scheme: light;
+}
+@media (max-width: 480px) {
+  :root { --page-pad: 12px; }
 }
 
 html[data-theme="dark"] {
@@ -180,8 +191,8 @@ body {
   z-index: 15;
   display: flex;
   align-items: center;
-  margin: 0 -18px;
-  padding: calc(env(safe-area-inset-top) + 10px) 18px 10px;
+  margin: 0 calc(-1 * var(--page-pad));
+  padding: calc(env(safe-area-inset-top) + 10px) var(--page-pad) 10px;
   font-family: var(--font-display);
   font-size: 0.95rem;
   font-weight: 600;
@@ -275,7 +286,7 @@ button, a {
 .page-inner {
   max-width: 720px;
   margin: 0 auto;
-  padding: 0 18px calc(var(--nav-h) + env(safe-area-inset-bottom) + 40px);
+  padding: 0 var(--page-pad) calc(var(--nav-h) + env(safe-area-inset-bottom) + 40px);
 }
 body.nav-hidden .page-inner {
   padding-bottom: calc(env(safe-area-inset-bottom) + 40px);
@@ -810,14 +821,26 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   -webkit-backdrop-filter: blur(18px) saturate(150%);
   border: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
   border-radius: var(--radius-l);
-  padding: 24px 20px 28px;
+  padding: 24px 14px 28px;
   box-shadow: var(--shadow-1);
   overflow-x: hidden;
+}
+/* Narrow phones only: the card's own inner padding is the other half of
+   the reading-width budget (--page-pad above frees the margin outside
+   the card). Kept roomier on wider screens where width isn't scarce. */
+@media (max-width: 480px) {
+  .lyrics-container { padding-left: 12px; padding-right: 12px; }
 }
 
 .lyric-section { margin-top: 24px; }
 .lyric-section:first-child { margin-top: 0; }
-.lyric-section.is-indented { padding-left: 32px; }
+/* Indent is a visual cue (this section repeats/echoes the one above it),
+   not a layout requirement — kept modest so it doesn't eat into the
+   already-scarce line width on narrow phones. */
+.lyric-section.is-indented { padding-left: 20px; }
+@media (max-width: 480px) {
+  .lyric-section.is-indented { padding-left: 14px; }
+}
 
 .lyric-line {
   display: flex;
