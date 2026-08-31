@@ -855,6 +855,17 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   margin-bottom: 4px;
   line-height: 1.15;
 }
+/* A line with no chords at all (see renderLyrics) has nothing to reserve
+   the chord row's height for, so it drops the tight chord-chart rhythm
+   in favor of normal reading spacing — closer to how a plain lyric or
+   spoken line reads in WorshipLeader/OnSong, and closer to ordinary body
+   text generally, rather than carrying a chord chart's spacing with no
+   chords to justify it. */
+.lyric-line.is-plain {
+  align-items: baseline;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
 
 .lyric-section-number {
   font-family: var(--font-mono);

@@ -1467,6 +1467,17 @@ function renderLyrics(opts = {}) {
         });
       }
 
+      // A line with no chord at all shouldn't still reserve a chord
+      // badge's worth of height above its words — that leaves a "phantom"
+      // gap with nothing filling it, which reads as loose and inconsistent
+      // next to chorded lines where that space is doing visible work. Only
+      // give this line the reserved chord row (and its tighter, chord-chart
+      // line-height) when it actually has a chord on it; otherwise fall
+      // back to normal, closer-set body-text spacing — same idea WorshipLeader
+      // and similar chord-chart apps use for spoken/plain lyric lines.
+      const lineHasChord = tokens.some(tok => tok.chord);
+      lineEl.classList.toggle('is-plain', !lineHasChord);
+
       tokens.forEach(tok => {
         // A chord can cover a run of several words before the next chord
         // change (e.g. "[G]word1 word2 word3"). Rendering that whole run
@@ -1494,7 +1505,7 @@ function renderLyrics(opts = {}) {
               chordAnimIndex += 1;
             }
             wrap.appendChild(chordEl);
-          } else if (word) {
+          } else if (word && lineHasChord) {
             const spacer = document.createElement('span');
             spacer.className = 'chord-tag-spacer';
             wrap.appendChild(spacer);
