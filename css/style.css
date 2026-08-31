@@ -75,7 +75,7 @@
   color-scheme: light;
 }
 @media (max-width: 480px) {
-  :root { --page-pad: 6px; }
+  :root { --page-pad: 10px; }
 }
 
 html[data-theme="dark"] {
@@ -816,10 +816,11 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 /* ---------- lyrics + chords ---------- */
 .lyrics-container {
   margin-top: 18px;
-  background: color-mix(in srgb, var(--surface) 74%, transparent);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-  border: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  /* Solid to match the transpose bar and other control cards, and to
+     keep the chord/lyric text reading at full, unblurred contrast —
+     glassmorphism here was competing with legibility. */
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--radius-l);
   padding: 24px 14px 28px;
   box-shadow: var(--shadow-1);
@@ -829,7 +830,7 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
    the reading-width budget (--page-pad above frees the margin outside
    the card). Kept roomier on wider screens where width isn't scarce. */
 @media (max-width: 480px) {
-  .lyrics-container { padding-left: 6px; padding-right: 6px; }
+  .lyrics-container { padding-left: 10px; padding-right: 10px; }
 }
 
 .lyric-section { margin-top: 24px; }
@@ -839,7 +840,7 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
    already-scarce line width on narrow phones. */
 .lyric-section.is-indented { padding-left: 20px; }
 @media (max-width: 480px) {
-  .lyric-section.is-indented { padding-left: 7px; }
+  .lyric-section.is-indented { padding-left: 12px; }
 }
 
 .lyric-line {
