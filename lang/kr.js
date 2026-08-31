@@ -22,6 +22,7 @@ window.SONGBOOK_LANG.kr = {
   lyricsGroup: "가사",
   chordsGroup: "코드",
   chordStyleGroup: "코드 스타일",
+  chordStyleSub: "가사 위에 코드를 표시하는 방식",
   chordStyleChip: "칩",
   chordStyleText: "텍스트",
   settingsTitle: "설정",

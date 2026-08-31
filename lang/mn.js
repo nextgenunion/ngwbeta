@@ -22,6 +22,7 @@ window.SONGBOOK_LANG.mn = {
   lyricsGroup: "Үг",
   chordsGroup: "Аккорд",
   chordStyleGroup: "Аккордын хэлбэр",
+  chordStyleSub: "Аккордыг үгийн дээр хэрхэн харуулах",
   chordStyleChip: "Дугтуй",
   chordStyleText: "Текст",
   settingsTitle: "Тохиргоо",

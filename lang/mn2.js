@@ -25,6 +25,7 @@ window.SONGBOOK_LANG.mn2 = {
   // traditional script yet — file is currently disabled/unloaded (see
   // service-worker.js and index.html), fix before re-enabling.
   chordStyleGroup: "Аккордын хэлбэр",
+  chordStyleSub: "Аккордыг үгийн дээр хэрхэн харуулах",
   chordStyleChip: "Дугтуй",
   chordStyleText: "Текст",
   settingsTitle: "ᠲᠣᢈᠢᠷᠠᠭ᠎ᠠ",

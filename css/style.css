@@ -983,11 +983,7 @@ html[data-chord-style="text"] .chord-tag {
   font-size: var(--lyrics-size);
   color: var(--ink);
   font-family: var(--font-lyrics);
-  /* Medium (500), not the 400 default: at small mobile sizes a hairline
-     weight hits certain Cyrillic letterforms (Ж, Ш, Щ, Ф) harder than
-     Latin ones — 500 reads solid without tipping into 700-bold
-     "shouting" territory. */
-  font-weight: 500;
+  font-weight: 400;
   min-width: 0;
   max-width: 100%;
   overflow-wrap: break-word;

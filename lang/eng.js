@@ -26,6 +26,7 @@ window.SONGBOOK_LANG.en = {
   lyricsGroup: "Lyrics",
   chordsGroup: "Chords",
   chordStyleGroup: "Chord style",
+  chordStyleSub: "How chords are displayed above lyrics",
   chordStyleChip: "Chips",
   chordStyleText: "Text",
   settingsTitle: "Settings",

@@ -798,6 +798,7 @@ function applyLanguage() {
     't-lyricsGroup': 'lyricsGroup',
     't-chordsGroup': 'chordsGroup',
     't-chordStyleGroup': 'chordStyleGroup',
+    't-chordStyleSub': 'chordStyleSub',
     't-chordStyleChip': 'chordStyleChip',
     't-chordStyleText': 'chordStyleText',
     't-settingsTitle': 'settingsTitle',
@@ -1253,16 +1254,6 @@ function bindSongView() {
       applyFontSizes();
       localStorage.setItem('sb-lyrics-size', state.lyricsSize);
       localStorage.setItem('sb-chord-size', state.chordSize);
-    });
-  });
-
-  document.querySelectorAll('#chord-style-toggle [data-chord-style]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const style = btn.dataset.chordStyle;
-      if (style === state.chordStyle) return;
-      state.chordStyle = style;
-      applyChordStyle();
-      localStorage.setItem('sb-chord-style', state.chordStyle);
     });
   });
 
@@ -2474,6 +2465,16 @@ function bindSettings() {
       document.documentElement.setAttribute('data-accent', accent);
       localStorage.setItem('sb-accent', accent);
       document.querySelectorAll('.accent-swatch').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+    });
+  });
+
+  document.querySelectorAll('#chord-style-toggle [data-chord-style]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const style = btn.dataset.chordStyle;
+      if (style === state.chordStyle) return;
+      state.chordStyle = style;
+      applyChordStyle();
+      localStorage.setItem('sb-chord-style', state.chordStyle);
     });
   });
 

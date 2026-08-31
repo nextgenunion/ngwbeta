@@ -167,13 +167,6 @@
       <button class="chip-btn" data-font="chords-down" aria-label="Decrease chord size">A−</button>
       <button class="chip-btn" data-font="chords-up" aria-label="Increase chord size">A+</button>
     </div>
-    <div class="font-group">
-      <span class="font-group-label" id="t-chordStyleGroup">Chord style</span>
-      <div class="seg-toggle" role="group" id="chord-style-toggle" aria-label="Chord display style">
-        <button class="seg-toggle-btn" data-chord-style="chip" id="t-chordStyleChip" aria-pressed="true">Chips</button>
-        <button class="seg-toggle-btn" data-chord-style="text" id="t-chordStyleText" aria-pressed="false">Text</button>
-      </div>
-    </div>
   </div>
 
   <div id="sv-labels" class="sv-labels"></div>
@@ -216,6 +209,16 @@
         <button class="accent-swatch" data-accent="aqua" aria-pressed="false" aria-label="Aqua" style="background:#3FA9B0"></button>
         <button class="accent-swatch" data-accent="cinnamon" aria-pressed="false" aria-label="Cinnamon" style="background:#A9762F"></button>
         <button class="accent-swatch" data-accent="red" aria-pressed="false" aria-label="Rose" style="background:#E8919E"></button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-chordStyleGroup">Chord style</span>
+        <span class="settings-row-sub" id="t-chordStyleSub">How chords are displayed above lyrics</span>
+      </div>
+      <div class="seg-toggle" role="group" id="chord-style-toggle" aria-label="Chord display style">
+        <button class="seg-toggle-btn" data-chord-style="chip" id="t-chordStyleChip" aria-pressed="true">Chips</button>
+        <button class="seg-toggle-btn" data-chord-style="text" id="t-chordStyleText" aria-pressed="false">Text</button>
       </div>
     </div>
   </section>
