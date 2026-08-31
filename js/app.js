@@ -1,0 +1,2951 @@
+// =========================================================
+// Songbook — app.js
+// Copyright (c) 2026 Next Gen Union. All rights reserved.
+// Proprietary and confidential. No unauthorized copying, modification,
+// or redistribution, in whole or in part, without prior written
+// permission from Next Gen Union. See LICENSE for full terms.
+//
+// Data-driven: song content lives as one JSON file per song under
+// /data/songs/ (see data/songs/manifest.json), loaded at runtime by
+// loadSongData(). Adding a song = add a JSON file + one line in the
+// manifest — nothing here needs to change.
+// =========================================================
+
+// Sourced from version.js (loaded before this file in index.html) so this
+// never has to be edited here — bump the version in version.js instead.
+const APP_VERSION = window.SONGBOOK_APP_VERSION;
+const SEEN_VERSION_KEY = 'ngw_seen_version';
+
+// Marks the version we're about to reload into as "already seen", so that
+// when app.js re-executes after the reload, hardUpdateBackstop() below
+// sees no mismatch and stays quiet. Called by every code path that already
+// handles an update and is about to reload for it on its own (the normal
+// controllerchange path, and the manual "Reload app" button) — so the
+// backstop only ever fires for what it's actually meant for: a device that
+// somehow never went through one of those normal paths at all. Without
+// this, the backstop can't tell "a normal update just handled this" apart
+// from "nothing has ever updated this device", and reloads a second time
+// after every single normal update, on top of the reload that already
+// handled it.
+function markVersionSeen() {
+  try {
+    localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION);
+  } catch (e) {
+    // localStorage unavailable — the reload still happens either way;
+    // worst case here is the backstop redundantly double-checking on the
+    // next load, not a stuck/stale app.
+  }
+}
+
+// --- Hard update backstop -------------------------------------------------
+// Everything above (scrollRestoration, controllerchange auto-reload,
+// updateViaCache) fixes the *normal* service-worker update path. This is a
+// second, independent line of defense that doesn't rely on any of that
+// machinery noticing anything: it runs the instant this script itself
+// executes, compares APP_VERSION against what's remembered from last time,
+// and if they don't match, wipes every service worker + cache directly and
+// forces one reload. So even if a device somehow never sees a normal SW
+// update (host-level caching quirks, timing races, whatever), the first
+// time it happens to load a genuinely fresh copy of this file, it will
+// self-heal rather than staying stuck on stale code indefinitely.
+//
+// The normal update paths (registerServiceWorker()'s controllerchange
+// listener, and the manual reloadApp() button) call markVersionSeen()
+// themselves just before they reload, specifically so this backstop sees
+// nothing to do on the load that follows. Without that, this ran a SECOND,
+// redundant reload after every single normal update — the mismatch here
+// used to only ever get cleared by this same block, so it could never tell
+// "a normal path just updated this" apart from "nothing ever has".
+//
+// This wipes EVERY cache bucket, including the separate offline-fallback
+// one (see OFFLINE_CACHE in service-worker.js) — deliberately: this path
+// only runs when something is stale/wrong enough to need a full reset, so
+// it shouldn't leave anything behind, offline.html included. The
+// reload this triggers re-registers the service worker, whose install
+// step repopulates OFFLINE_CACHE immediately after — the only real gap is
+// the reload itself failing while genuinely offline, which no caching
+// strategy can paper over.
+(function hardUpdateBackstop() {
+  try {
+    const seen = localStorage.getItem(SEEN_VERSION_KEY);
+    if (seen && seen !== APP_VERSION) {
+      localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION);
+      const wipe = [];
+      if ('serviceWorker' in navigator) {
+        wipe.push(navigator.serviceWorker.getRegistrations().then(regs => Promise.all(regs.map(r => r.unregister()))));
+      }
+      if ('caches' in window) {
+        wipe.push(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))));
+      }
+      Promise.all(wipe).catch(() => {}).finally(() => window.location.reload());
+      return;
+    }
+    localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION);
+  } catch (e) {
+    // localStorage unavailable (e.g. private browsing edge cases) — the
+    // normal service-worker update path above still applies, just skip
+    // this extra backstop rather than letting it break anything.
+  }
+})();
+
+// Song sources: each is an independent collection of songs — its own list,
+// its own load-state, and (see SONGDB_STORES further down) its own offline
+// backup store. Version 1 only ever populates and shows 'official'. The
+// list/search/sort/song-view code below all takes a source key as a
+// parameter rather than assuming 'official' is the only one, so a future
+// 'user' source (v2's User Songs) can reuse it — add its loader, its own
+// page, and a call site — without rewriting any of this.
+const state = {
+  sources: {
+    official: { songs: [], loadFailed: false },
+  },
+  sortBy: 'num',       // 'alpha' | 'num'
+  sortOrder: 'asc',     // 'asc' | 'desc'
+  query: '',
+  activeSong: null,
+  activeSourceKey: 'official', // which source the open song view came from
+  transpose: 0,
+  lyricsSize: 1.05,   // rem
+  chordSize: 0.82,    // rem
+  lang: 'mn',
+  currentPage: 'songs', // mirrors whichever page is currently visible (see showPage)
+  playlists: { order: [], byId: {} }, // see "Playlists" section below
+  activePlaylistId: null,
+};
+
+// Registry of every page the router (showPage/bindNav) knows about. Adding
+// a new page later — e.g. v2's "user-songs", or Playlists/Sheet Music —
+// means adding one entry here plus its <main id="…"> and its
+// <button data-nav="…"> in index.html; showPage() and bindNav() below
+// don't need to change either way.
+//   elId            — the <main> element's id.
+//   navKey           — which bottom-nav button (its data-nav value) should
+//                       light up while this page is open. song-view has no
+//                       button of its own, so it borrows 'songs' (the list
+//                       it was opened from). Omit for a page that hides the
+//                       nav bar entirely (see hideNav).
+//   hideNav          — true if the bottom nav should be hidden on this page.
+//   rememberScroll    — true if this page's scroll position should be saved
+//                       and restored across navigation. song-view is false:
+//                       it shows different content each time it's opened,
+//                       so it always starts at the top instead.
+//   onEnter          — optional callback run each time this page is shown.
+const PAGES = {
+  'songs':          { elId: 'page-songs',          navKey: 'songs',     rememberScroll: true },
+  'song-view':      { elId: 'page-song-view',      navKey: 'songs',     rememberScroll: false, hideNav: true },
+  'playlists':      { elId: 'page-playlists',      navKey: 'playlists', rememberScroll: true,  onEnter: () => renderPlaylistsList() },
+  'playlist-view':  { elId: 'page-playlist-view',  navKey: 'playlists', rememberScroll: false, hideNav: true },
+  'settings':       { elId: 'page-settings',       navKey: 'settings',  rememberScroll: true,  onEnter: () => resetContactUI() },
+  'about':          { elId: 'page-about',          navKey: 'settings',  rememberScroll: false, hideNav: true },
+};
+
+// Pages that open "on top of" another page (a song out of the songbook or
+// a playlist, pushed over whatever list it was opened from) rather than
+// being a sibling tab you switch between. These get the slide push/pop
+// transition in showPage(); tab switches (Songs/Playlists/Settings) stay
+// an instant cut, same as before.
+const SLIDE_PAGES = new Set(['song-view', 'playlist-view', 'about']);
+
+// Remembers each rememberScroll page's scroll position (each .page
+// element's own scrollTop — see the CSS notes on .page for why it's no
+// longer window/document scroll) across navigation, so leaving a page (open
+// a song, switch tabs) and coming back lands where you left off, instead of
+// jumping to the top every time. Derived from PAGES so a new page opts in
+// just by setting rememberScroll: true there — nothing to add here. See
+// showPage().
+const scrollMemory = {};
+Object.entries(PAGES).forEach(([name, page]) => {
+  if (page.rememberScroll) scrollMemory[name] = 0;
+});
+
+// Chord transpose is limited to a full octave in either direction —
+// beyond that you're just back to an enharmonic equivalent of an in-range key.
+const TRANSPOSE_LIMIT = 12;
+
+const CHROMATIC_SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const CHROMATIC_FLAT  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const FLAT_KEYS = new Set(['F','Bb','Eb','Ab','Db','Gb','Dm','Gm','Cm','Fm','Bbm']);
+
+// ---------------------------------------------------------
+// Icons: every icon the app uses lives as its own file under
+// icons/svg/ — this loader fetches each one and injects its markup into
+// the matching <svg data-icon="…"> placeholder. To use a different icon,
+// replace (or edit) the file in icons/svg/ — nothing here needs to change.
+// A replacement file's own viewBox/attributes are honored, so a
+// differently-proportioned icon still renders correctly.
+// ---------------------------------------------------------
+const ICON_FILES = {
+  'brand-mark': 'icons/svg/brand-music-note.svg',
+  'search': 'icons/svg/search.svg',
+  'back-arrow': 'icons/svg/back-arrow.svg',
+  'contact-mail': 'icons/svg/mail-contact.svg',
+  'copy': 'icons/svg/copy.svg',
+  'nav-songs': 'icons/svg/nav-songs-bookmark.svg',
+  'nav-settings': 'icons/svg/nav-settings-gear.svg',
+  'nav-playlist': 'icons/svg/nav-playlist.svg',
+  'heart-outline': 'icons/svg/heart-outline.svg',
+  'heart-filled': 'icons/svg/heart-filled.svg',
+  'menu-kebab': 'icons/svg/menu-kebab.svg',
+  'plus': 'icons/svg/plus.svg',
+  'trash': 'icons/svg/trash.svg',
+  'pencil': 'icons/svg/pencil.svg',
+  'close': 'icons/svg/close.svg',
+  'check': 'icons/svg/check.svg',
+  'download': 'icons/svg/download.svg',
+  'upload': 'icons/svg/upload.svg',
+  'social-facebook': 'icons/svg/social-facebook.svg',
+  'social-youtube': 'icons/svg/social-youtube.svg',
+  'social-instagram': 'icons/svg/social-instagram.svg',
+  'social-website': 'icons/svg/social-website.svg',
+  // Full-color one-off (not part of the monochrome fill="currentColor" set
+  // above) — the Saturday/Sabbath easter-egg mascot. See initSabbathMascot().
+  'mascot-sabbath': 'icons/svg/mascot-sabbath.svg',
+};
+
+const iconFileCache = new Map();
+function loadIconFile(path) {
+  if (!iconFileCache.has(path)) {
+    iconFileCache.set(path, fetch(path).then((res) => {
+      if (!res.ok) throw new Error(`${path} responded ${res.status}`);
+      return res.text();
+    }));
+  }
+  return iconFileCache.get(path);
+}
+
+async function injectIcon(el) {
+  const name = el.dataset.icon;
+  const path = ICON_FILES[name];
+  if (!path) return;
+  try {
+    const svgText = await loadIconFile(path);
+    const src = new DOMParser().parseFromString(svgText, 'image/svg+xml').querySelector('svg');
+    if (!src) throw new Error('no <svg> root found');
+    // Adopt the file's own viewBox/attributes (so a replacement icon with
+    // different proportions still renders correctly), but never touch
+    // class/id — those belong to the placeholder markup, not the icon file.
+    Array.from(src.attributes).forEach((attr) => {
+      if (attr.name === 'class' || attr.name === 'id') return;
+      el.setAttribute(attr.name, attr.value);
+    });
+    el.innerHTML = src.innerHTML;
+  } catch (err) {
+    console.warn(`Songbook: could not load icon "${name}" from ${path} —`, err);
+  }
+}
+
+function initIcons(root = document) {
+  return Promise.all(Array.from(root.querySelectorAll('[data-icon]')).map(injectIcon));
+}
+
+// Social links shown in Settings → About. Leave `url` empty in config.js to
+// hide that icon entirely — nothing else needs to change when these are
+// filled in. Each icon's artwork lives in icons/svg/ (see ICON_FILES above);
+// this table just maps a platform to its label and icon file key.
+const SOCIAL_ICONS = {
+  facebook: { label: 'Facebook', icon: 'social-facebook' },
+  youtube: { label: 'YouTube', icon: 'social-youtube' },
+  instagram: { label: 'Instagram', icon: 'social-instagram' },
+  website: { label: 'Website', icon: 'social-website' },
+};
+
+function renderSocialLinks() {
+  const el = document.getElementById('about-social');
+  if (!el) return;
+  const social = (window.SONGBOOK_APP_CONFIG && window.SONGBOOK_APP_CONFIG.social) || {};
+  el.innerHTML = Object.keys(SOCIAL_ICONS)
+    .filter(key => social[key])
+    .map(key => `<a href="${escapeHtml(social[key])}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(SOCIAL_ICONS[key].label)}"><svg data-icon="${SOCIAL_ICONS[key].icon}" viewBox="0 0 24 24"></svg></a>`)
+    .join('');
+  initIcons(el);
+}
+
+// Credits list on the About page — who's behind the app. Config-driven
+// (see config.js's `creditsEnabled`/`credits`) so showing/hiding it, or
+// adding/removing people, never needs a code change. creditsEnabled is a
+// separate on/off switch from the list itself — flipping it off hides the
+// section without losing the entries in `credits`, so turning it back on
+// later doesn't mean re-typing everyone in.
+function renderCredits() {
+  const section = document.getElementById('about-credits');
+  const list = document.getElementById('about-credits-list');
+  if (!section || !list) return;
+  const config = window.SONGBOOK_APP_CONFIG || {};
+  const credits = config.credits || [];
+  if (!config.creditsEnabled || !credits.length) {
+    section.hidden = true;
+    list.innerHTML = '';
+    return;
+  }
+  section.hidden = false;
+  list.innerHTML = credits.map(c => `
+    <li class="about-credits-item">
+      <span class="about-credits-role">${escapeHtml(c.role || '')}</span>
+      <span class="about-credits-name">${escapeHtml(c.name || '')}</span>
+    </li>`).join('');
+}
+
+function t(key, ...args) {
+  const dict = (window.SONGBOOK_LANG && window.SONGBOOK_LANG[state.lang]) || {};
+  const entry = dict[key];
+  if (typeof entry === 'function') return entry(...args);
+  return entry !== undefined ? entry : key;
+}
+
+// ---------------------------------------------------------
+// Boot
+// ---------------------------------------------------------
+document.addEventListener('DOMContentLoaded', init);
+
+// Each startup step runs independently — if one throws (a missing element,
+// a bad selector, anything), the rest still run. Without this, one broken
+// step could silently prevent applyLanguage() from ever running, leaving
+// the static English placeholders in index.html on screen permanently
+// instead of the real (translated) content.
+function safe(label, fn) {
+  try {
+    fn();
+  } catch (err) {
+    console.error(`Songbook: "${label}" failed during startup —`, err);
+  }
+}
+
+async function init() {
+  safe('initIcons', initIcons);
+  safe('initSplash', initSplash);
+  safe('loadPrefs', loadPrefs);
+  safe('bindNav', bindNav);
+  safe('bindSongsPage', bindSongsPage);
+  safe('bindSongView', bindSongView);
+  safe('bindPlaylistsPage', bindPlaylistsPage);
+  safe('bindPlaylistView', bindPlaylistView);
+  safe('bindModalShell', bindModalShell);
+  safe('bindSettings', bindSettings);
+  safe('bindAboutPage', bindAboutPage);
+  safe('applyLanguage', applyLanguage);
+  safe('registerServiceWorker', registerServiceWorker);
+  safe('setupInstallPrompt', setupInstallPrompt);
+  safe('initHistoryNav', initHistoryNav);
+  safe('initSabbathMascot', initSabbathMascot);
+  safe('initChristmasSnow', initChristmasSnow);
+  safe('bindAccentDiscoEasterEgg', bindAccentDiscoEasterEgg);
+  requestPersistentStorage(); // fire-and-forget; never block startup on this
+
+  await Promise.all([loadSongData(), loadPlaylists()]);
+  safe('applyLanguage (post-load)', applyLanguage); // re-run so the results count reflects the loaded songs
+}
+
+// Ask the browser not to automatically evict our Cache Storage / IndexedDB
+// under storage pressure. This is a real, standard API — but it's worth
+// being clear about what it does and doesn't cover: it protects against
+// the browser's own automatic eviction, not against a user (or an OEM
+// "phone manager" cleanup tool) explicitly clearing the app's storage —
+// that's a stronger, OS-level action no web page can prevent.
+async function requestPersistentStorage() {
+  if (!(navigator.storage && navigator.storage.persist)) return;
+  try {
+    const already = await navigator.storage.persisted();
+    if (already) return;
+    const granted = await navigator.storage.persist();
+    console.log('Songbook: persistent storage', granted ? 'granted' : 'not granted (browser declined)');
+  } catch (err) {
+    console.warn('Songbook: persistent storage request failed —', err);
+  }
+}
+
+// ---------------------------------------------------------
+// Song data: one JSON file per song, listed in data/songs/manifest.json.
+// Adding a song = add its JSON file + one line in the manifest; nothing
+// else in the app needs to change.
+//
+// Uses Promise.allSettled rather than Promise.all deliberately: the
+// manifest and the actual files on disk can drift out of sync (a song
+// removed without updating the manifest, a typo in a filename, a song
+// still mid-upload). With Promise.all, ONE missing/broken file rejects
+// the whole batch and the entire library — every other song, including
+// ones that are perfectly fine — silently fails to load. That's the bug
+// that made the app look like it had no songs (and so no working audio
+// player) at all. allSettled loads everything that *does* work and just
+// warns about what doesn't, so one bad entry can't take down the rest.
+// ---------------------------------------------------------
+async function fetchSongData({ forceRefresh = false } = {}) {
+  const headers = forceRefresh ? { 'X-Force-Refresh': '1' } : {};
+  const manifestRes = await fetch('data/songs/manifest.json', { headers });
+  if (!manifestRes.ok) throw new Error(`manifest.json responded ${manifestRes.status}`);
+  const files = await manifestRes.json();
+
+  const results = await Promise.allSettled(files.map(async (file) => {
+    const res = await fetch(`data/songs/${file}`, { headers });
+    if (!res.ok) throw new Error(`${file} responded ${res.status}`);
+    return res.json();
+  }));
+
+  const failed = results.filter(r => r.status === 'rejected');
+  if (failed.length) {
+    console.warn(
+      `Songbook: ${failed.length} of ${files.length} song file(s) failed to load and were skipped —`,
+      failed.map(r => r.reason && r.reason.message ? r.reason.message : r.reason)
+    );
+  }
+
+  const songs = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+  if (songs.length === 0 && files.length > 0) {
+    // Every single file failed (e.g. fully offline with no cache yet) —
+    // that's the one case that should still surface as a real failure so
+    // loadSongData()'s IndexedDB-backup fallback below kicks in.
+    throw new Error('all song files failed to load');
+  }
+  return songs;
+}
+
+// ---------------------------------------------------------
+// IndexedDB backup: a second, independent offline copy of the song data.
+// Cache Storage (used by the service worker) is the primary mechanism and
+// is enough on its own in normal use — this exists purely as a fallback
+// for the edge case where Cache Storage has been evicted by the OS under
+// storage pressure (a real, documented mobile behavior, and a different
+// eviction policy than IndexedDB's) while the network is also unavailable.
+// ---------------------------------------------------------
+const SONGDB_NAME = 'songbook-db';
+// Bumped 1 → 2 to add the 'user-songs' store below (an IndexedDB store can
+// only be created inside onupgradeneeded, which only fires on a version
+// increase). onupgradeneeded is written to only create stores that don't
+// already exist, so this upgrade is additive for already-installed
+// devices — their existing official-songs backup is untouched.
+const SONGDB_VERSION = 2;
+// One object store per song source (see state.sources above), so each
+// source's offline backup lives independently and nothing collides. Only
+// 'official' is written to in Version 1. 'user' is reserved now, unused,
+// so v2's User Songs source can start saving to IndexedDB immediately —
+// no further DB version bump needed when that day comes.
+const SONGDB_STORES = {
+  official: 'songs', // kept as 'songs', not renamed to 'official-songs', so
+                      // existing installs' offline backup carries over as-is
+  user: 'user-songs',
+};
+
+function openSongDb() {
+  return new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) { reject(new Error('IndexedDB unavailable')); return; }
+    const req = indexedDB.open(SONGDB_NAME, SONGDB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      Object.values(SONGDB_STORES).forEach((storeName) => {
+        if (!db.objectStoreNames.contains(storeName)) db.createObjectStore(storeName);
+      });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveSongsToIndexedDb(sourceKey, songs) {
+  const storeName = SONGDB_STORES[sourceKey];
+  if (!storeName) return;
+  try {
+    const db = await openSongDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      tx.objectStore(storeName).put(songs, 'all-songs');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch (err) {
+    // Non-fatal — this is a backup layer, not the primary path.
+    console.warn(`Songbook: could not save "${sourceKey}" songs to IndexedDB —`, err);
+  }
+}
+
+async function loadSongsFromIndexedDb(sourceKey) {
+  const storeName = SONGDB_STORES[sourceKey];
+  if (!storeName) return null;
+  const db = await openSongDb();
+  const songs = await new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly');
+    const req = tx.objectStore(storeName).get('all-songs');
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+  db.close();
+  return songs;
+}
+
+async function loadSongData() {
+  const source = state.sources.official;
+  try {
+    source.songs = await fetchSongData();
+    saveSongsToIndexedDb('official', source.songs); // fire-and-forget; don't block on this
+  } catch (err) {
+    console.error('Songbook: failed to load song data over the network —', err);
+    try {
+      const backup = await loadSongsFromIndexedDb('official');
+      if (backup && backup.length) {
+        console.warn('Songbook: network/cache load failed — recovered songs from IndexedDB backup.');
+        source.songs = backup;
+        return;
+      }
+    } catch (dbErr) {
+      console.error('Songbook: IndexedDB backup also unavailable —', dbErr);
+    }
+    // Most likely cause if there's no backup either: the app was opened
+    // directly from disk (file://), where browsers block fetch() of local
+    // files. Serving it over http(s) — even just localhost — resolves this.
+    // (Dev-facing note only — songLoadError below is the plain, actionless
+    // message an actual end user sees; it deliberately doesn't mention any
+    // of this, since there's nothing a real user could do about it.)
+    source.songs = [];
+    source.loadFailed = true;
+  }
+}
+
+// Manual "Refresh song database" button: asks the service worker to try the
+// network first (see the X-Force-Refresh handling in service-worker.js),
+// falling back to the existing cached copy if that fails — so a refresh
+// attempted while offline just silently keeps the offline copy intact
+// instead of ever deleting it. The cache is only ever replaced by data
+// that's confirmed to have loaded successfully. Unlike the initial load, a
+// failure here also leaves the source's songs alone — no point wiping out songs
+// that were already showing just because this refresh attempt failed.
+async function reloadSongLibrary() {
+  const btn = document.getElementById('reload-songs-btn');
+  btn.disabled = true;
+  btn.textContent = t('reloadBtnBusy');
+
+  try {
+    const songs = await fetchSongData({ forceRefresh: true });
+    const source = state.sources.official;
+    source.songs = songs;
+    source.loadFailed = false;
+    saveSongsToIndexedDb('official', source.songs);
+    renderSongList();
+    showToast(navigator.onLine ? t('toastLibraryReloaded') : t('toastLibraryOffline'));
+  } catch (err) {
+    console.error('Songbook: manual song database refresh failed —', err);
+    showToast(t('toastLibraryReloadFailed'));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t('reloadBtn');
+  }
+}
+
+// Manual "Reload app" button: a different, heavier reload than the song
+// database refresh above — this clears the offline app-shell cache and the
+// service worker entirely, then reloads the page, so it picks up a fresh
+// copy of everything (HTML/CSS/JS included), not just the song data. This
+// exists as an explicit, deliberate action the person has to tap, since the
+// browser's native swipe-down-to-reload gesture is disabled in this app
+// (accidental pull-to-refresh mid-scroll was closing songs/losing state).
+async function reloadApp() {
+  const btn = document.getElementById('reload-app-btn');
+  btn.disabled = true;
+  btn.textContent = t('reloadAppBtnBusy');
+
+  // Offline: unregistering the service worker and clearing every cache
+  // leaves nothing behind to serve the reload with — nothing can be
+  // re-downloaded without a connection. That combination used to be
+  // exactly what stranded people on a broken/blank reload while offline.
+  // Skip the destructive cleanup entirely here and just reload normally —
+  // the still-intact service worker and cache keep serving the app as-is,
+  // and the offline fallback page (see service-worker.js) covers it even
+  // if something's still missing.
+  if (!navigator.onLine) {
+    showToast(t('toastReloadAppOffline'));
+    btn.disabled = false;
+    btn.textContent = t('reloadAppBtn');
+    window.location.reload();
+    return;
+  }
+
+  // This function's own reload (below) is the deliberate, complete fix —
+  // the fresh load it triggers will register a new service worker, which
+  // will then claim this page and fire 'controllerchange' again. Without
+  // these, two other independent update-detection paths would each see
+  // that fresh load as a separate, unrelated update and reload it AGAIN,
+  // right on top of this one: registerServiceWorker()'s controllerchange
+  // listener (suppressed for this one cycle via the sessionStorage flag),
+  // and hardUpdateBackstop() at the top of this file (suppressed by
+  // marking the version as seen before we go). See the comments on those
+  // two for the full picture.
+  try {
+    sessionStorage.setItem('ngw_skip_next_auto_reload', '1');
+  } catch (e) {
+    // sessionStorage unavailable — worst case is one extra (harmless,
+    // if annoying) reload; not worth failing the whole action over.
+  }
+  markVersionSeen();
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+  } catch (err) {
+    console.error('Songbook: app reload cleanup failed —', err);
+  } finally {
+    window.location.reload();
+  }
+}
+
+// ---------------------------------------------------------
+// In-app back navigation: the hardware/gesture/browser back button should
+// move within the app (song → list, settings → list) instead of leaving
+// it, and only exit after a second back press at the root within a short
+// window — the same "press back again to exit" pattern many apps use.
+// ---------------------------------------------------------
+let lastBackPressAt = 0;
+const EXIT_CONFIRM_WINDOW_MS = 2000;
+
+// Every history entry we push carries a monotonically increasing `seq`
+// alongside its page data. popstate alone doesn't say whether the browser
+// moved back or forward — only that the state changed — so comparing the
+// incoming seq to the last one we saw is what lets showPage() tell a real
+// "back to the list" from a "forward into a song" and pick the right slide
+// direction (see pendingNavDirection / SLIDE_PAGES in showPage()).
+let navSeq = 0;
+let currentNavSeq = 0;
+function pushNavState(data) {
+  navSeq += 1;
+  currentNavSeq = navSeq;
+  history.pushState({ ...data, seq: navSeq }, '', location.href);
+}
+
+// Set by the popstate handler right before it calls showPage/openSong/
+// openPlaylist so showPage() knows whether this particular navigation is
+// a back or a forward move — see the slide-transition logic in showPage().
+// Direct in-app calls (tapping a song, tapping a playlist, a nav tab) never
+// touch this, so it stays 'forward' for them, which is exactly right: those
+// are always moving deeper into the app, never back out of it.
+let pendingNavDirection = 'forward';
+
+function initHistoryNav() {
+  // Every pushState below reuses the same URL (only the state object
+  // changes — {page: 'songs'} vs {page: 'song-view'}, etc.), since this is
+  // a single-page app with no per-page URLs. Left on its default 'auto',
+  // the browser tries to restore its own remembered scroll position on
+  // top of ours whenever you navigate back/forward — and because all the
+  // entries share one URL, it can restore the wrong one (typically 0),
+  // silently overwriting the position showPage() just set. Switching to
+  // 'manual' hands scroll restoration entirely to our own code below,
+  // which is the only thing that actually knows which page is showing.
+  if ('scrollRestoration' in history) {
+    history.scrollRestoration = 'manual';
+  }
+
+  // Establish the app's root state so the very first back press has
+  // something of ours to land on instead of leaving immediately.
+  history.replaceState({ page: 'songs', seq: 0 }, '', location.href);
+  navSeq = 0;
+  currentNavSeq = 0;
+
+  window.addEventListener('popstate', (e) => {
+    const st = e.state;
+    // Figure out which way we just moved before anything below touches
+    // currentNavSeq, so showPage() can read pendingNavDirection once it
+    // runs (see the direction comment near pendingNavDirection).
+    if (st) {
+      const newSeq = typeof st.seq === 'number' ? st.seq : 0;
+      pendingNavDirection = newSeq < currentNavSeq ? 'back' : 'forward';
+      currentNavSeq = newSeq;
+    }
+    if (st && st.page) {
+      if (st.page === 'song-view' && st.songId) {
+        const sourceKey = st.sourceKey || 'official';
+        const source = state.sources[sourceKey];
+        const song = source && source.songs.find(s => s.id === st.songId);
+        if (song) { openSong(song, { pushHistory: false, sourceKey }); return; }
+      }
+      if (st.page === 'playlist-view' && st.playlistId) {
+        if (state.playlists.byId[st.playlistId]) {
+          openPlaylist(st.playlistId, { pushHistory: false });
+          return;
+        }
+      }
+      showPage(st.page, { pushHistory: false });
+      return;
+    }
+
+    // No app state left to land on — the next back would leave the app.
+    const now = Date.now();
+    if (now - lastBackPressAt < EXIT_CONFIRM_WINDOW_MS) {
+      // Second press in time: let this one actually exit.
+      return;
+    }
+    lastBackPressAt = now;
+    // Re-plant the root state so this press doesn't leave the app, and
+    // tell the person to press back again if they really want to exit.
+    pushNavState({ page: 'songs' });
+    showPage('songs', { pushHistory: false });
+    showToast(t('toastPressBackAgain'));
+  });
+}
+
+// ---------------------------------------------------------
+// Splash screen: shown briefly on launch, then fades into the app
+// ---------------------------------------------------------
+function initSplash() {
+  const splash = document.getElementById('splash-screen');
+  if (!splash) return;
+  const MIN_DISPLAY_MS = 900;
+  const FADE_MS = 1100;
+  const shownAt = Date.now();
+  const hide = () => {
+    const wait = Math.max(0, MIN_DISPLAY_MS - (Date.now() - shownAt));
+    setTimeout(() => {
+      splash.classList.add('is-hidden');
+      setTimeout(() => splash.remove(), FADE_MS);
+    }, wait);
+  };
+  if (document.readyState === 'complete') {
+    hide();
+  } else {
+    window.addEventListener('load', hide);
+  }
+}
+
+// ---------------------------------------------------------
+// Preferences (persisted locally — offline-first, no cloud)
+// ---------------------------------------------------------
+function loadPrefs() {
+  const theme = localStorage.getItem('sb-theme') || 'light';
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('theme-toggle').setAttribute('aria-checked', String(theme === 'dark'));
+
+  const accent = localStorage.getItem('sb-accent') || 'aqua';
+  document.documentElement.setAttribute('data-accent', accent);
+  document.querySelectorAll('.accent-swatch').forEach(btn => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.accent === accent));
+  });
+
+  const savedLang = localStorage.getItem('sb-ui-lang');
+  const available = Object.keys(window.SONGBOOK_LANG || {});
+  const preferredOrder = window.SONGBOOK_LANG_ORDER || [];
+  const orderedLangs = [
+    ...preferredOrder.filter(code => available.includes(code)),
+    ...available.filter(code => !preferredOrder.includes(code)).sort(),
+  ];
+  state.lang = (savedLang && available.includes(savedLang)) ? savedLang
+    : (available.includes(window.SONGBOOK_DEFAULT_LANG) ? window.SONGBOOK_DEFAULT_LANG : orderedLangs[0]);
+  document.documentElement.setAttribute('lang', state.lang);
+
+  const langSelect = document.getElementById('ui-lang-select');
+  if (langSelect) {
+    langSelect.innerHTML = orderedLangs
+      .map(code => `<option value="${code}">${(window.SONGBOOK_LANG[code].meta && window.SONGBOOK_LANG[code].meta.name) || code}</option>`)
+      .join('');
+    langSelect.value = state.lang;
+  }
+
+  const lyricsSize = parseFloat(localStorage.getItem('sb-lyrics-size'));
+  const chordSize = parseFloat(localStorage.getItem('sb-chord-size'));
+  if (!Number.isNaN(lyricsSize)) state.lyricsSize = lyricsSize;
+  if (!Number.isNaN(chordSize)) state.chordSize = chordSize;
+  applyFontSizes();
+}
+
+function applyFontSizes() {
+  document.documentElement.style.setProperty('--lyrics-size', state.lyricsSize + 'rem');
+  document.documentElement.style.setProperty('--chord-size', state.chordSize + 'rem');
+}
+
+// ---------------------------------------------------------
+// Language: apply the active language to every labeled element
+// ---------------------------------------------------------
+function applyLanguage() {
+  document.documentElement.setAttribute('lang', state.lang);
+
+  const map = {
+    't-appTitle': 'appTitle',
+    't-topbarAppName': 'appTitle',
+    // The playlist-view page's topbar sits above a specific playlist, not
+    // the songbook library, so it should read "Playlist(s)" not "Songbook"
+    // — and it uses the same fuller title as the playlists list page's
+    // heading (playlistsTitle), not the short bottom-nav label.
+    't-topbarAppName2': 'playlistsTitle',
+    // The About page's topbar sits above the settings context it was
+    // opened from (same reasoning as playlist-view above), so it uses
+    // settingsTitle ("Settings") rather than repeating "About" — the
+    // page's own header already says "About" via t-sectionAbout2.
+    't-topbarAppName3': 'settingsTitle',
+    't-navSongs': 'navSongs',
+    't-navSettings': 'navSettings',
+    't-navPlaylists': 'navPlaylists',
+    't-playlistsTitle': 'playlistsTitle',
+    't-playlistsBackupTitle': 'playlistsBackupTitle',
+    't-playlistsBackupSub': 'playlistsBackupSub',
+    't-keyLabel': 'keyLabel',
+    't-lyricsGroup': 'lyricsGroup',
+    't-chordsGroup': 'chordsGroup',
+    't-settingsTitle': 'settingsTitle',
+    't-sectionAppearance': 'sectionAppearance',
+    't-darkModeTitle': 'darkModeTitle',
+    't-darkModeSub': 'darkModeSub',
+    't-accentTitle': 'accentTitle',
+    't-accentSub': 'accentSub',
+    't-sectionLangDb': 'sectionLangDb',
+    't-uiLangTitle': 'uiLangTitle',
+    't-uiLangSub': 'uiLangSub',
+    't-dbTitle': 'dbTitle',
+    't-dbSub': 'dbSub',
+    't-sectionApp': 'sectionApp',
+    't-reloadTitle': 'reloadTitle',
+    't-reloadSub': 'reloadSub',
+    't-sectionAbout': 'sectionAbout',
+    't-sectionAbout2': 'sectionAbout',
+    't-versionTitle': 'versionTitle',
+    't-creditsHeading': 'creditsHeading',
+    'about-nav-sub': 'aboutNavSub',
+  };
+  Object.entries(map).forEach(([id, key]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = t(key);
+  });
+
+  document.getElementById('search-input').placeholder = t('searchPlaceholder');
+  document.getElementById('back-btn').setAttribute('aria-label', t('backAria'));
+  document.getElementById('transpose-reset').textContent = t('transposeReset');
+
+  document.querySelector('.sort-btn[data-sort-by="alpha"]').textContent = t('sortByAlpha');
+  document.querySelector('.sort-btn[data-sort-by="num"]').textContent = t('sortByNumber');
+  document.querySelector('.sort-btn[data-sort-order="asc"]').textContent = t('sortAsc');
+  document.querySelector('.sort-btn[data-sort-order="desc"]').textContent = t('sortDesc');
+
+  document.getElementById('db-option-en').textContent = t('dbComingSoon', 'English');
+
+  document.getElementById('empty-state').textContent = t('emptyState');
+  document.getElementById('about-version-line').textContent = t('versionSub', APP_VERSION);
+  document.getElementById('about-nav-title').textContent = t('appName');
+  document.getElementById('scripture-verse-text').textContent = `«${t('scriptureVerse')}»`;
+  document.getElementById('scripture-verse-ref').textContent = t('scriptureRef');
+
+  const appConfig = window.SONGBOOK_APP_CONFIG || {};
+  const orgName = appConfig.orgName || '';
+  document.getElementById('about-copyright').textContent =
+    `© ${new Date().getFullYear()} ${orgName}. All rights reserved.`;
+  document.getElementById('about-copyright-terms').textContent = t('copyrightTerms');
+
+  document.getElementById('t-contactBtn').textContent = t('contactBtn');
+  document.getElementById('about-contact-copy').setAttribute('aria-label', t('copyEmailAria'));
+  if (appConfig.contactEmail) {
+    document.getElementById('about-contact-email').textContent = appConfig.contactEmail;
+  }
+  resetContactUI();
+
+  const reloadBtn = document.getElementById('reload-songs-btn');
+  if (!reloadBtn.disabled) reloadBtn.textContent = t('reloadBtn');
+  const reloadAppBtn = document.getElementById('reload-app-btn');
+  if (!reloadAppBtn.disabled) reloadAppBtn.textContent = t('reloadAppBtn');
+  document.getElementById('export-playlists-btn').textContent = t('exportBtn');
+  document.getElementById('import-playlists-btn').textContent = t('importBtn');
+
+  renderSocialLinks();
+  renderCredits();
+
+  refreshInstallLabels();
+  renderSongList();
+  if (state.activeSong) updateTransposeUI();
+  if (state.currentPage === 'playlists') renderPlaylistsList();
+  updateSabbathMascotText(); // re-translate the mascot's bubble if it's showing
+  if (state.currentPage === 'playlist-view') renderPlaylistView();
+  if (state.activeSong) updateFavoriteButtonUI();
+}
+
+// ---------------------------------------------------------
+// Navigation — data-driven off PAGES above, so it doesn't need to change
+// when a page is added; only PAGES (+ its markup) does.
+// ---------------------------------------------------------
+function bindNav() {
+  document.querySelectorAll('.nav-btn[data-nav]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      const target = btn.dataset.nav;
+      // Tapping a tab you're ALREADY on is a deliberate "jump to top of
+      // the list" action — standard tab-bar behavior. Tapping it to come
+      // back from a different page (settings, a song) is a normal "go
+      // back" and should instead restore wherever that list was
+      // scrolled to, same as the in-song back button.
+      const alreadyThere = state.currentPage === target;
+      showPage(target, { pushHistory: true, resetScroll: alreadyThere });
+    });
+  });
+}
+
+function showPage(name, opts = {}) {
+  const { pushHistory = false, replaceHistory = false, resetScroll = false } = opts;
+  const page = PAGES[name];
+  if (!page) {
+    console.error(`Songbook: showPage() called with unknown page "${name}"`);
+    return;
+  }
+
+  // Re-navigating to the page already on screen (e.g. tapping the "Songs"
+  // tab while already viewing the song list) normally shouldn't move the
+  // scroll at all — just leave it exactly where it is. resetScroll is the
+  // explicit override for that (see bindNav's already-there case): it
+  // always wins and jumps to the top, even on the same page.
+  const isSamePage = state.currentPage === name;
+
+  // Leaving the song page for good (not just re-opening it) — stop any
+  // audio that's playing there. Otherwise the browser/OS keeps the media
+  // session (and its floating widget) alive for an <audio> element that's
+  // no longer visible or reachable from the UI.
+  if (!isSamePage && state.currentPage === 'song-view') {
+    document.querySelectorAll('#sv-audio audio').forEach(a => a.pause());
+  }
+
+  // Otherwise, before switching away, remember where we were scrolled on
+  // the page's own scroll container (see the CSS/.page notes for why it's
+  // an element's scrollTop now, not window.scrollY) so coming back to it
+  // later restores that exact spot.
+  const prevName = state.currentPage;
+  if (!isSamePage && (prevName in scrollMemory)) {
+    const prevPage = PAGES[prevName];
+    const prevEl = prevPage && document.getElementById(prevPage.elId);
+    if (prevEl) scrollMemory[prevName] = prevEl.scrollTop;
+  }
+
+  const targetEl = document.getElementById(page.elId);
+
+  // Slide transition for song-view/playlist-view: pushed forward (opened)
+  // slides in from the right over whatever's underneath; popped (backed
+  // out of) slides back out to the right, revealing what was underneath —
+  // which was never hidden or moved, so nothing has to re-render for it.
+  // See pendingNavDirection/SLIDE_PAGES for how the direction is decided.
+  let transitionType = null;
+  if (!isSamePage && !prefersReducedMotion()) {
+    const prevEl = PAGES[prevName] && document.getElementById(PAGES[prevName].elId);
+    if (pendingNavDirection === 'back' && SLIDE_PAGES.has(prevName) && prevEl) {
+      transitionType = 'pop';
+    } else if (pendingNavDirection !== 'back' && SLIDE_PAGES.has(name) && prevEl) {
+      transitionType = 'push';
+    }
+  }
+  pendingNavDirection = 'forward';
+
+  if (transitionType) {
+    const prevEl = document.getElementById(PAGES[prevName].elId);
+    runPageSlideTransition(transitionType, prevEl, targetEl, {
+      onDone: name === 'song-view' ? fixNativeAudioControlsPaint : null,
+    });
+  } else {
+    Object.values(PAGES).forEach(p => { document.getElementById(p.elId).hidden = true; });
+    targetEl.hidden = false;
+    // No slide animation ran (reduced-motion, or a non-slide page), but the
+    // <audio controls> element in openSong() was still built while its page
+    // was `hidden`. Chromium's native audio controls (play button, scrubber)
+    // are a shadow-DOM widget that doesn't always get laid out properly for
+    // elements constructed off-screen/hidden — they can render as blank or
+    // half-drawn until something forces a reflow. A tap "fixes" it because
+    // that's exactly the kind of forced reflow. Do that proactively instead
+    // of waiting on the user to discover the trick.
+    if (name === 'song-view') fixNativeAudioControlsPaint();
+  }
+
+  document.querySelectorAll('.nav-btn[data-nav]').forEach(b => b.classList.remove('is-active'));
+  if (page.navKey) {
+    const navBtn = document.querySelector(`.nav-btn[data-nav="${page.navKey}"]`);
+    if (navBtn) navBtn.classList.add('is-active');
+  }
+  if (page.onEnter) page.onEnter();
+
+  // A page can opt to hide the bottom tab bar so nothing competes with its
+  // content (song-view does this — it has its own slim top bar instead).
+  document.getElementById('bottom-nav').hidden = !!page.hideNav;
+  document.body.classList.toggle('nav-hidden', !!page.hideNav);
+
+  if (resetScroll) {
+    // Explicit override: always end up at the top, same page or not.
+    if (isSamePage) {
+      // Already on this page (tapping the tab you're on) — animate back to
+      // the top instead of an instant cut, so the jump reads as motion.
+      targetEl.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      // Landing on the page fresh (e.g. opening a song): nothing to
+      // animate from, just start at the top.
+      targetEl.scrollTop = 0;
+    }
+  } else if (!isSamePage) {
+    if (name in scrollMemory) {
+      // Returning to a page we've been on before: put the scroll back where it was.
+      targetEl.scrollTop = scrollMemory[name];
+    } else {
+      // Fresh page (e.g. opening a song): start at the top.
+      targetEl.scrollTop = 0;
+    }
+  }
+
+  state.currentPage = name;
+
+  if (pushHistory) {
+    pushNavState({ page: name });
+  } else if (replaceHistory) {
+    history.replaceState({ page: name, seq: currentNavSeq }, '', location.href);
+  }
+}
+
+// Whether the person has asked the OS/browser to minimize motion — the
+// slide transition below is skipped entirely for them (falls back to the
+// original instant cut) rather than trying to offer a "reduced" version.
+function prefersReducedMotion() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+// Runs the push/pop slide for the two SLIDE_PAGES. Both pages involved are
+// simple CSS transforms on their own compositor layer (no layout/paint
+// work on the surrounding page), so this is cheap to animate even on
+// low-end devices — it's the same technique native app frameworks use for
+// this exact transition.
+function runPageSlideTransition(type, fromEl, toEl, opts = {}) {
+  const { onDone = null } = opts;
+  // Anything other than the two pages actually involved stays hidden as
+  // before — only these two are ever visible at once, and only briefly.
+  Object.values(PAGES).forEach(p => {
+    const el = document.getElementById(p.elId);
+    if (el !== fromEl && el !== toEl) el.hidden = true;
+  });
+  fromEl.hidden = false;
+  toEl.hidden = false;
+
+  const topEl = type === 'push' ? toEl : fromEl;
+  const bottomEl = type === 'push' ? fromEl : toEl;
+  topEl.style.zIndex = '2';
+  bottomEl.style.zIndex = '1';
+
+  topEl.classList.remove('page-slide-in', 'page-slide-out');
+  // Force a reflow so re-adding the same animation class (e.g. opening a
+  // second song while one is already mid-transition) restarts it instead
+  // of the browser treating it as a no-op.
+  void topEl.offsetWidth;
+  topEl.classList.add(type === 'push' ? 'page-slide-in' : 'page-slide-out');
+
+  // If a previous transition on this same element got interrupted before
+  // finishing (rapid back-to-back navigation), its 'animationend' listener
+  // never fired and is still attached — drop it before attaching this
+  // one so listeners can't pile up over a long session.
+  if (topEl._slideCleanup) {
+    topEl.removeEventListener('animationend', topEl._slideCleanup);
+  }
+  const cleanup = () => {
+    topEl.classList.remove('page-slide-in', 'page-slide-out');
+    topEl.style.zIndex = '';
+    bottomEl.style.zIndex = '';
+    // fromEl is always the page we're leaving — whether it was the one
+    // visually sliding away (pop) or just sitting static underneath while
+    // the new page slid over it (push) — so it's always the one to hide
+    // once the transition's done; toEl (== the page showPage() is
+    // switching to) always stays visible, same as the instant-cut path.
+    fromEl.hidden = true;
+    topEl.removeEventListener('animationend', cleanup);
+    topEl._slideCleanup = null;
+    if (onDone) onDone();
+  };
+  topEl._slideCleanup = cleanup;
+  topEl.addEventListener('animationend', cleanup);
+}
+
+// ---------------------------------------------------------
+// Songs page: search + sort + list rendering
+// ---------------------------------------------------------
+function bindSongsPage() {
+  const input = document.getElementById('search-input');
+  input.addEventListener('input', () => {
+    state.query = input.value.trim().toLowerCase();
+    renderSongList();
+  });
+
+  document.querySelectorAll('.sort-btn[data-sort-by]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.sortBy = btn.dataset.sortBy;
+      document.querySelectorAll('.sort-btn[data-sort-by]').forEach(b => b.setAttribute('aria-pressed', 'false'));
+      btn.setAttribute('aria-pressed', 'true');
+      renderSongList();
+    });
+  });
+
+  document.querySelectorAll('.sort-btn[data-sort-order]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.sortOrder = btn.dataset.sortOrder;
+      document.querySelectorAll('.sort-btn[data-sort-order]').forEach(b => b.setAttribute('aria-pressed', 'false'));
+      btn.setAttribute('aria-pressed', 'true');
+      renderSongList();
+    });
+  });
+}
+
+function stripChords(lyricsArr) {
+  return lyricsArr.join(' \n ').replace(/\[[^\]]+\]/g, '');
+}
+
+function matchesQuery(song, q) {
+  if (!q) return true;
+
+  const haystack = [
+    song.title,
+    String(song.number),
+    ...(song.alternateTitles || []),
+    song.artist || '',
+    stripChords(song.lyrics),
+  ].join(' \n ').toLowerCase();
+
+  // Every word in the query must appear somewhere in the combined text,
+  // in any order — so "God awesome" matches "God Is an Awesome God"
+  // even though that exact phrase never appears contiguously.
+  const words = q.split(/\s+/).filter(Boolean);
+  return words.every(word => haystack.includes(word));
+}
+
+// Lower rank = more relevant. Used only while a search query is active,
+// so exact/close title matches float to the top instead of being buried
+// among "contains the word somewhere in the lyrics" results.
+function relevanceRank(song, q) {
+  const query = q.trim().toLowerCase();
+  if (!query) return 6;
+
+  const title = (song.title || '').toLowerCase();
+  const altTitles = (song.alternateTitles || []).filter(Boolean).map(a => a.toLowerCase());
+  const artist = (song.artist || '').toLowerCase();
+
+  if (title === query) return 0;                              // exact title match
+  if (title.startsWith(query)) return 1;                       // title starts with query
+  if (title.includes(query)) return 2;                         // title contains query
+  if (altTitles.some(a => a === query)) return 3;               // exact alternate title
+  if (altTitles.some(a => a.includes(query))) return 4;         // alternate title contains query
+  if (artist.includes(query)) return 5;                         // artist match
+  return 6;                                                     // everything else (e.g. lyrics)
+}
+
+function sortSongs(list, q) {
+  const arr = [...list];
+  const dir = state.sortOrder === 'desc' ? -1 : 1;
+  const query = (q || '').trim();
+
+  arr.sort((a, b) => {
+    if (query) {
+      const rankA = relevanceRank(a, query);
+      const rankB = relevanceRank(b, query);
+      if (rankA !== rankB) return rankA - rankB;
+    }
+    if (state.sortBy === 'num') {
+      return (a.number - b.number) * dir;
+    }
+    return a.title.localeCompare(b.title) * dir;
+  });
+
+  return arr;
+}
+
+function highlight(text, q) {
+  if (!q) return escapeHtml(text);
+  const idx = text.toLowerCase().indexOf(q);
+  if (idx === -1) return escapeHtml(text);
+  return escapeHtml(text.slice(0, idx)) + '<mark>' + escapeHtml(text.slice(idx, idx + q.length)) + '</mark>' + escapeHtml(text.slice(idx + q.length));
+}
+
+function escapeHtml(str) {
+  return str.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// sourceKey picks which state.sources entry to render (defaults to
+// 'official', the only one that exists in Version 1). listElId/emptyElId/
+// countElId let a future second list page (e.g. User Songs) reuse this
+// same function against its own DOM ids instead of needing its own copy —
+// every v1 call site below uses the defaults, so nothing changes for now.
+function renderSongList(opts = {}) {
+  const {
+    sourceKey = 'official',
+    listElId = 'song-list',
+    emptyElId = 'empty-state',
+    countElId = 'results-count',
+  } = opts;
+
+  const source = state.sources[sourceKey];
+  const listEl = document.getElementById(listElId);
+  const emptyEl = document.getElementById(emptyElId);
+  const countEl = document.getElementById(countElId);
+
+  if (!source || source.loadFailed) {
+    listEl.innerHTML = `<li class="load-error">${escapeHtml(t('songLoadError'))}</li>`;
+    emptyEl.hidden = true;
+    countEl.textContent = '';
+    return;
+  }
+
+  const filtered = sortSongs(source.songs.filter(s => matchesQuery(s, state.query)), state.query);
+
+  countEl.textContent = filtered.length === source.songs.length
+    ? t('resultsAll', filtered.length)
+    : t('resultsFiltered', filtered.length, source.songs.length);
+
+  listEl.innerHTML = '';
+  emptyEl.hidden = filtered.length !== 0;
+
+  const q = state.query;
+  filtered.forEach(song => {
+    const li = document.createElement('li');
+    const row = document.createElement('button');
+    row.className = 'song-row';
+    row.innerHTML = `
+      <span class="song-badge">${song.number}</span>
+      <span class="song-row-text">
+        <span class="song-row-title">${highlight(song.title, q)}</span>
+        ${song.artist ? `<span class="song-row-sub">${escapeHtml(song.artist)}</span>` : ''}
+      </span>
+    `;
+    row.addEventListener('click', () => openSong(song, { sourceKey }));
+    li.appendChild(row);
+    listEl.appendChild(li);
+  });
+}
+
+// ---------------------------------------------------------
+// Song view: chord-over-lyric rendering + transpose
+// ---------------------------------------------------------
+function bindSongView() {
+  document.getElementById('back-btn').addEventListener('click', () => history.back());
+
+  document.getElementById('transpose-up').addEventListener('click', () => {
+    if (state.transpose >= TRANSPOSE_LIMIT) return;
+    state.transpose += 1;
+    updateTransposeUI({ animate: true });
+  });
+  document.getElementById('transpose-down').addEventListener('click', () => {
+    if (state.transpose <= -TRANSPOSE_LIMIT) return;
+    state.transpose -= 1;
+    updateTransposeUI({ animate: true });
+  });
+  document.getElementById('transpose-reset').addEventListener('click', () => {
+    if (state.transpose === 0) return;
+    state.transpose = 0;
+    updateTransposeUI({ animate: true });
+  });
+
+  document.querySelectorAll('[data-font]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.font;
+      if (action === 'lyrics-up') state.lyricsSize = Math.min(1.6, state.lyricsSize + 0.08);
+      if (action === 'lyrics-down') state.lyricsSize = Math.max(0.75, state.lyricsSize - 0.08);
+      if (action === 'chords-up') state.chordSize = Math.min(1.2, state.chordSize + 0.06);
+      if (action === 'chords-down') state.chordSize = Math.max(0.6, state.chordSize - 0.06);
+      applyFontSizes();
+      localStorage.setItem('sb-lyrics-size', state.lyricsSize);
+      localStorage.setItem('sb-chord-size', state.chordSize);
+    });
+  });
+
+  document.getElementById('sv-favorite-btn').addEventListener('click', () => {
+    const song = state.activeSong;
+    if (!song) return;
+    toggleFavorite(state.activeSourceKey, song.id);
+    updateFavoriteButtonUI();
+  });
+
+  document.getElementById('sv-add-playlist-btn').addEventListener('click', () => {
+    const song = state.activeSong;
+    if (!song) return;
+    openAddToPlaylistModal(state.activeSourceKey, song.id);
+  });
+}
+
+function updateFavoriteButtonUI() {
+  const song = state.activeSong;
+  const btn = document.getElementById('sv-favorite-btn');
+  if (!btn || !song) return;
+  const isFav = isSongInPlaylist('favorites', state.activeSourceKey, song.id);
+  btn.setAttribute('aria-pressed', String(isFav));
+  const svg = btn.querySelector('svg');
+  if (svg) svg.setAttribute('data-icon', isFav ? 'heart-filled' : 'heart-outline');
+  injectIcon(svg);
+}
+
+// Chromium's native <audio controls> is a shadow-DOM widget (play button,
+// scrubber, time, volume) that's laid out once when the element becomes
+// visible. openSong() below builds it via innerHTML while the song-view
+// page is still hidden/off-screen (so its content is ready the instant the
+// page transition starts), which means that first layout pass can happen
+// before the element has real size — the controls then render blank or as
+// disconnected fragments, and stay that way until something forces a
+// reflow. A tap does that by accident; this does it on purpose, right
+// after the page has actually become visible; toggling `hidden` twice is a
+// no-op visually but makes the browser redo layout for the audio controls.
+function fixNativeAudioControlsPaint() {
+  document.querySelectorAll('#sv-audio audio').forEach(a => {
+    a.hidden = true;
+    // eslint-disable-next-line no-unused-expressions
+    void a.offsetHeight;
+    a.hidden = false;
+  });
+}
+
+function openSong(song, opts = {}) {
+  const { pushHistory = true, sourceKey = 'official' } = opts;
+  state.activeSong = song;
+  state.activeSourceKey = sourceKey;
+  state.transpose = 0;
+
+  document.getElementById('sv-number').textContent = `#${song.number}`;
+  document.getElementById('sv-title').textContent = song.title;
+
+  const altEl = document.getElementById('sv-alt-title');
+  const altTitles = (song.alternateTitles || []).filter(Boolean);
+  if (altTitles.length) {
+    altEl.textContent = altTitles.join(' • ');
+    altEl.hidden = false;
+  } else {
+    altEl.textContent = '';
+    altEl.hidden = true;
+  }
+
+  const artistEl = document.getElementById('sv-artist');
+  if (song.artist) {
+    artistEl.textContent = song.artist;
+    artistEl.hidden = false;
+  } else {
+    artistEl.textContent = '';
+    artistEl.hidden = true;
+  }
+
+  const labelsEl = document.getElementById('sv-labels');
+  labelsEl.innerHTML = (song.labels || [])
+    .map(l => `<span class="sv-label-chip">${escapeHtml(l)}</span>`).join('');
+
+  const audioEl = document.getElementById('sv-audio');
+  // Pause/release whatever's currently playing before we blow it away with
+  // innerHTML below. If a track is mid-playback, the browser/OS may have
+  // already registered it with the system media session (that's the little
+  // floating play-bar widget Android shows) — just overwriting innerHTML
+  // destroys the <audio> element without telling the OS, so that widget is
+  // left behind with nothing playing underneath it, which is what made it
+  // look broken/shrunk. Explicitly pausing and clearing src first makes the
+  // browser tear the media session down cleanly.
+  audioEl.querySelectorAll('audio').forEach(a => {
+    a.pause();
+    a.removeAttribute('src');
+    a.load();
+  });
+  if (song.audio && song.audio.length) {
+    audioEl.hidden = false;
+    audioEl.innerHTML = song.audio.map(a => {
+      const url = escapeHtml(a.url || a);
+      const fileName = escapeHtml((a.url || a).split('/').pop());
+      return `
+        <div class="audio-item">
+          <audio controls style="width:100%" src="${url}"></audio>
+          <a class="audio-download" href="${url}" download="${fileName}">⭳ ${t('downloadAudio')}</a>
+        </div>`;
+    }).join('');
+  } else {
+    audioEl.hidden = true;
+    audioEl.innerHTML = '';
+  }
+
+  const linksEl = document.getElementById('sv-links');
+  if (song.links && song.links.length) {
+    linksEl.hidden = false;
+    linksEl.innerHTML = song.links.map(l => {
+      const url = typeof l === 'string' ? l : l.url;
+      const label = (typeof l === 'object' && l.label) ? l.label : t('listenLink');
+      return `<a class="sv-link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+    }).join('');
+  } else {
+    linksEl.hidden = true;
+    linksEl.innerHTML = '';
+  }
+
+  updateTransposeUI();
+  updateFavoriteButtonUI();
+  showPage('song-view', { resetScroll: true });
+  if (pushHistory) {
+    pushNavState({ page: 'song-view', songId: song.id, sourceKey });
+  }
+}
+
+function updateTransposeUI(opts = {}) {
+  const { animate = false } = opts;
+  document.getElementById('transpose-offset').textContent =
+    (state.transpose > 0 ? '+' : '') + state.transpose;
+  document.getElementById('transpose-up').disabled = state.transpose >= TRANSPOSE_LIMIT;
+  document.getElementById('transpose-down').disabled = state.transpose <= -TRANSPOSE_LIMIT;
+  const song = state.activeSong;
+  document.getElementById('sv-key').textContent = song ? transposeChord(song.key, state.transpose) : '—';
+  renderLyrics({ animateChords: animate });
+}
+
+function transposeChord(chord, steps) {
+  if (!chord || !steps) return chord;
+  // Split root (+ optional accidental) from the rest (quality/extensions), and handle slash bass.
+  const parts = chord.split('/');
+  const transposedParts = parts.map(part => transposeSingle(part, steps));
+  return transposedParts.join('/');
+}
+
+function transposeSingle(token, steps) {
+  const m = token.match(/^([A-G])(#|b)?(.*)$/);
+  if (!m) return token;
+  const [, letter, accidental, rest] = m;
+  const useFlats = FLAT_KEYS.has(letter + (accidental || '') + (rest.startsWith('m') ? 'm' : ''));
+  const name = letter + (accidental || '');
+  let idx = CHROMATIC_SHARP.indexOf(name);
+  if (idx === -1) idx = CHROMATIC_FLAT.indexOf(name);
+  if (idx === -1) return token;
+  const newIdx = ((idx + steps) % 12 + 12) % 12;
+  const table = useFlats ? CHROMATIC_FLAT : CHROMATIC_SHARP;
+  return table[newIdx] + rest;
+}
+
+function renderLyrics(opts = {}) {
+  const { animateChords = false } = opts;
+  const container = document.getElementById('lyrics-container');
+  const song = state.activeSong;
+  container.innerHTML = '';
+  if (!song) return;
+
+  // Running count of chord tags placed so far, used only to stagger the
+  // chord-pop animation slightly per chord (a light ripple down the
+  // page). Capped so long songs don't end up with a sluggish tail.
+  let chordAnimIndex = 0;
+
+  // Group lines into sections (verses/choruses) using blank lines as
+  // boundaries — the same simple convention a future song editor can
+  // produce by just leaving a blank line between parts. A section whose
+  // first line starts with leading whitespace in the source is treated as
+  // an indented part (e.g. a chorus set off from the verses), matching how
+  // it's laid out in the original songbook document.
+  const sections = [];
+  let current = [];
+  song.lyrics.forEach(rawLine => {
+    if (rawLine.trim() === '') {
+      if (current.length) { sections.push(current); current = []; }
+    } else {
+      current.push(rawLine);
+    }
+  });
+  if (current.length) sections.push(current);
+
+  // Only number parts when there's more than one — a single-section song
+  // has nothing to distinguish, so a lone "1" would just be noise.
+  const numberParts = sections.length > 1;
+
+  sections.forEach((sectionLines, sectionIdx) => {
+    const isIndented = /^\s{2,}/.test(sectionLines[0]);
+
+    const sectionEl = document.createElement('div');
+    sectionEl.className = 'lyric-section' + (isIndented ? ' is-indented' : '');
+
+    if (numberParts) {
+      const numEl = document.createElement('div');
+      numEl.className = 'lyric-section-number';
+      numEl.textContent = String(sectionIdx + 1);
+      sectionEl.appendChild(numEl);
+    }
+
+    sectionLines.forEach((rawLine, lineIdx) => {
+      // Leading whitespace on the first line is only a structural indent
+      // marker (see isIndented above), not literal spacing to render.
+      const line = lineIdx === 0 ? rawLine.replace(/^\s+/, '') : rawLine;
+
+      const lineEl = document.createElement('div');
+      lineEl.className = 'lyric-line';
+
+      // Tokenize on [Chord] markers: each chord attaches to the text run that follows it,
+      // up to the next chord marker (or end of line). Leading text with no chord is its own token.
+      const chordPositions = [...line.matchAll(/\[([^\]]+)\]/g)];
+      const tokens = [];
+      if (chordPositions.length === 0) {
+        tokens.push({ chord: null, text: line });
+      } else {
+        if (chordPositions[0].index > 0) {
+          tokens.push({ chord: null, text: line.slice(0, chordPositions[0].index) });
+        }
+        chordPositions.forEach((cm, i) => {
+          const textStart = cm.index + cm[0].length;
+          const textEnd = i + 1 < chordPositions.length ? chordPositions[i + 1].index : line.length;
+          tokens.push({ chord: cm[1], text: line.slice(textStart, textEnd) });
+        });
+      }
+
+      tokens.forEach(tok => {
+        // A chord can cover a run of several words before the next chord
+        // change (e.g. "[G]word1 word2 word3"). Rendering that whole run
+        // as a single flex item bundles all its words into one unit for
+        // line-wrapping — and because flexbox decides what fits on a row
+        // using each item's full *unwrapped* width, not its ability to
+        // wrap internally, an entire multi-word run gets pushed to the
+        // next row even when only its last word doesn't fit, leaving a
+        // dead gap at the end of the row above. Splitting each run into
+        // one token per word (chord tag on the first word only) gives
+        // flex-wrap the same word-level granularity normal text has, so
+        // only the word that doesn't fit moves down — not the whole run.
+        const words = tok.text.split(/\s+/).filter(Boolean);
+        if (words.length === 0) words.push('');
+        words.forEach((word, i) => {
+          const wrap = document.createElement('span');
+          wrap.className = 'lyric-token';
+          if (i === 0 && tok.chord) {
+            const chordEl = document.createElement('span');
+            chordEl.className = 'chord-tag';
+            chordEl.textContent = transposeChord(tok.chord, state.transpose);
+            if (animateChords) {
+              chordEl.classList.add('chord-pop');
+              chordEl.style.setProperty('--chord-pop-delay', Math.min(chordAnimIndex * 12, 380) + 'ms');
+              chordAnimIndex += 1;
+            }
+            wrap.appendChild(chordEl);
+          } else if (word) {
+            const spacer = document.createElement('span');
+            spacer.className = 'chord-tag-spacer';
+            wrap.appendChild(spacer);
+          }
+          const textEl = document.createElement('span');
+          textEl.className = 'lyric-word';
+          textEl.textContent = word || '\u00A0';
+          wrap.appendChild(textEl);
+          lineEl.appendChild(wrap);
+        });
+      });
+
+      sectionEl.appendChild(lineEl);
+    });
+
+    container.appendChild(sectionEl);
+  });
+}
+
+// ---------------------------------------------------------
+// Playlists (v2): a permanent "Favorites" playlist plus any number of
+// user-created playlists. Each playlist just holds a list of song
+// references — {sourceKey, songId} — rather than copies of the song data
+// itself, so a playlist always reflects the current song content and
+// works against any source (state.sources.official today, a future
+// state.sources.user tomorrow) without extra plumbing.
+//
+// Storage: playlists are saved on-device via IndexedDB (primary) with a
+// localStorage mirror as a fallback for browsers/contexts where
+// IndexedDB isn't available. This is intentionally isolated behind the
+// small load/persist functions below (PlaylistStorage) so it can be
+// swapped later — e.g. for a real on-disk file via the File System
+// Access API — without touching any of the playlist logic that calls it.
+// Note: browser storage (IndexedDB/localStorage) is scoped per-browser,
+// not shared between different browsers on the same phone. Use
+// Settings → Export/Import playlists to carry playlists from one browser
+// to another on the same device.
+// ---------------------------------------------------------
+const PLAYLIST_DB_NAME = 'ngworship-playlists-db';
+const PLAYLIST_DB_STORE = 'kv';
+const PLAYLIST_DB_KEY = 'playlists';
+const PLAYLIST_LS_KEY = 'ngw-playlists';
+
+const PlaylistStorage = {
+  _openDb() {
+    return new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) { reject(new Error('IndexedDB unavailable')); return; }
+      const req = indexedDB.open(PLAYLIST_DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(PLAYLIST_DB_STORE)) db.createObjectStore(PLAYLIST_DB_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async load() {
+    try {
+      const db = await this._openDb();
+      const data = await new Promise((resolve, reject) => {
+        const tx = db.transaction(PLAYLIST_DB_STORE, 'readonly');
+        const req = tx.objectStore(PLAYLIST_DB_STORE).get(PLAYLIST_DB_KEY);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+      db.close();
+      if (data) return data;
+    } catch (err) {
+      console.warn('Songbook: playlist IndexedDB load failed, trying localStorage —', err);
+    }
+    try {
+      const raw = localStorage.getItem(PLAYLIST_LS_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      console.warn('Songbook: playlist localStorage load failed —', err);
+      return null;
+    }
+  },
+  async save(data) {
+    try {
+      localStorage.setItem(PLAYLIST_LS_KEY, JSON.stringify(data));
+    } catch (err) {
+      console.warn('Songbook: playlist localStorage save failed —', err);
+    }
+    try {
+      const db = await this._openDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(PLAYLIST_DB_STORE, 'readwrite');
+        tx.objectStore(PLAYLIST_DB_STORE).put(data, PLAYLIST_DB_KEY);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    } catch (err) {
+      console.warn('Songbook: playlist IndexedDB save failed (localStorage copy still saved) —', err);
+    }
+  },
+};
+
+function genPlaylistId() {
+  return 'pl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+async function loadPlaylists() {
+  const saved = await PlaylistStorage.load();
+  if (saved && saved.byId && saved.byId.favorites) {
+    state.playlists = saved;
+  } else {
+    state.playlists = {
+      order: ['favorites'],
+      byId: { favorites: { id: 'favorites', name: '', isFavorites: true, songs: [] } },
+    };
+  }
+}
+
+function persistPlaylists() {
+  PlaylistStorage.save(state.playlists); // fire-and-forget
+}
+
+// Manual export/import: browser storage (IndexedDB/localStorage) is
+// scoped to one browser on the device, so it's the honest way to carry
+// playlists to a different browser on the same phone (or as a manual
+// backup) without needing a server.
+function exportPlaylists() {
+  const blob = new Blob([JSON.stringify(state.playlists, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'ngworship-playlists.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(t('toastPlaylistsExported'));
+}
+
+async function importPlaylistsFromFile(file) {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data || !data.byId || !data.byId.favorites) throw new Error('not a playlists export file');
+    state.playlists = data;
+    persistPlaylists();
+    if (state.currentPage === 'playlists') renderPlaylistsList();
+    if (state.currentPage === 'playlist-view') renderPlaylistView();
+    if (state.activeSong) updateFavoriteButtonUI();
+    showToast(t('toastPlaylistsImported'));
+  } catch (err) {
+    console.error('Songbook: playlist import failed —', err);
+    showToast(t('toastPlaylistsImportFailed'));
+  }
+}
+
+function getPlaylist(id) {
+  return state.playlists.byId[id] || null;
+}
+
+function playlistDisplayName(pl) {
+  return pl.isFavorites ? t('favoritesName') : pl.name;
+}
+
+function findSongByRef(sourceKey, songId) {
+  const source = state.sources[sourceKey];
+  if (!source) return null;
+  return source.songs.find(s => s.id === songId) || null;
+}
+
+function isSongInPlaylist(playlistId, sourceKey, songId) {
+  const pl = getPlaylist(playlistId);
+  if (!pl) return false;
+  return pl.songs.some(ref => ref.sourceKey === sourceKey && ref.songId === songId);
+}
+
+function addSongToPlaylist(playlistId, sourceKey, songId) {
+  const pl = getPlaylist(playlistId);
+  if (!pl || isSongInPlaylist(playlistId, sourceKey, songId)) return;
+  pl.songs.push({ sourceKey, songId });
+  persistPlaylists();
+}
+
+function removeSongFromPlaylist(playlistId, sourceKey, songId) {
+  const pl = getPlaylist(playlistId);
+  if (!pl) return;
+  pl.songs = pl.songs.filter(ref => !(ref.sourceKey === sourceKey && ref.songId === songId));
+  persistPlaylists();
+}
+
+function toggleSongInPlaylist(playlistId, sourceKey, songId) {
+  const nowIn = !isSongInPlaylist(playlistId, sourceKey, songId);
+  if (nowIn) addSongToPlaylist(playlistId, sourceKey, songId);
+  else removeSongFromPlaylist(playlistId, sourceKey, songId);
+  return nowIn;
+}
+
+function toggleFavorite(sourceKey, songId) {
+  const nowFav = toggleSongInPlaylist('favorites', sourceKey, songId);
+  return nowFav;
+}
+
+function createPlaylist(name) {
+  const id = genPlaylistId();
+  state.playlists.byId[id] = { id, name, isFavorites: false, songs: [], createdAt: Date.now() };
+  state.playlists.order.push(id);
+  persistPlaylists();
+  return id;
+}
+
+function renamePlaylist(id, name) {
+  const pl = getPlaylist(id);
+  if (!pl || pl.isFavorites) return;
+  pl.name = name;
+  persistPlaylists();
+}
+
+function deletePlaylist(id) {
+  const pl = getPlaylist(id);
+  if (!pl || pl.isFavorites) return;
+  delete state.playlists.byId[id];
+  state.playlists.order = state.playlists.order.filter(pid => pid !== id);
+  persistPlaylists();
+}
+
+// ---------------------------------------------------------
+// Playlists page: list of playlists (Favorites pinned first)
+// ---------------------------------------------------------
+function bindPlaylistsPage() {
+  document.getElementById('new-playlist-btn').addEventListener('click', () => {
+    promptCreatePlaylist((id) => openPlaylist(id));
+  });
+}
+
+function renderPlaylistsList() {
+  const listEl = document.getElementById('playlist-list');
+  const emptyEl = document.getElementById('playlists-empty-state');
+  emptyEl.textContent = t('playlistsEmptyState');
+
+  const ids = state.playlists.order.filter(id => state.playlists.byId[id]);
+  // Favorites is always pinned in (see loadPlaylists), so ids.length is
+  // never actually 0 — only count the user's own playlists when deciding
+  // whether to show the "no playlists yet" text below Favorites.
+  const ownCount = ids.filter(id => !state.playlists.byId[id].isFavorites).length;
+  const hasFavoritesPinned = ids.length > 0 && state.playlists.byId[ids[0]].isFavorites;
+  emptyEl.hidden = ownCount !== 0;
+  // When Favorites is the only playlist, the empty-state text sits right
+  // below it — use the tighter, divider-attached spacing instead of the
+  // large centered gap meant for a page with nothing in it at all.
+  emptyEl.classList.toggle('playlists-empty-state--pinned', ownCount === 0 && hasFavoritesPinned);
+  listEl.innerHTML = '';
+
+  ids.forEach((id, index) => {
+    const pl = state.playlists.byId[id];
+
+    // Favorites is always pinned first (see loadPlaylists/createPlaylist),
+    // so a divider right after it visually separates it from the user's
+    // own playlists below — shown whether or not there are any yet, so it
+    // also sits between Favorites and the "no playlists yet" text.
+    if (index === 1 && hasFavoritesPinned) {
+      const divider = document.createElement('li');
+      divider.className = 'playlist-list-divider';
+      listEl.appendChild(divider);
+    }
+
+    const li = document.createElement('li');
+    const row = document.createElement('button');
+    row.className = 'playlist-row' + (pl.isFavorites ? ' is-favorites' : '');
+    row.innerHTML = `
+      <span class="playlist-icon"><svg viewBox="0 0 24 24" data-icon="${pl.isFavorites ? 'heart-filled' : 'nav-playlist'}"></svg></span>
+      <span class="playlist-row-text">
+        <span class="playlist-row-title">${escapeHtml(playlistDisplayName(pl))}</span>
+        <span class="playlist-row-sub">${t('playlistSongCount', pl.songs.length)}</span>
+      </span>
+    `;
+    row.addEventListener('click', () => openPlaylist(id));
+    li.appendChild(row);
+    listEl.appendChild(li);
+    initIcons(li);
+  });
+
+  // Only Favorites exists — the index===1 divider above never runs (there's
+  // no second item to trigger it), so add it here instead, right before the
+  // "no playlists yet" text.
+  if (ownCount === 0 && hasFavoritesPinned) {
+    const divider = document.createElement('li');
+    divider.className = 'playlist-list-divider';
+    listEl.appendChild(divider);
+  }
+}
+
+// ---------------------------------------------------------
+// Playlist-view page: songs inside one playlist
+// ---------------------------------------------------------
+function bindPlaylistView() {
+  document.getElementById('playlist-back-btn').addEventListener('click', () => history.back());
+
+  document.getElementById('playlist-menu-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    togglePlaylistMenu();
+  });
+
+  document.getElementById('playlist-done-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    setPlaylistEditMode(false);
+  });
+
+  document.addEventListener('click', () => closePlaylistMenu());
+
+  // Drag-to-reorder (pointer events cover touch + mouse). Only active
+  // while playlistEditMode is on; see renderPlaylistView for handle setup.
+  document.addEventListener('pointermove', onPlaylistDragMove);
+  document.addEventListener('pointerup', onPlaylistDragEnd);
+  document.addEventListener('pointercancel', onPlaylistDragEnd);
+}
+
+let playlistMenuOpen = false;
+function togglePlaylistMenu() {
+  playlistMenuOpen ? closePlaylistMenu() : openPlaylistMenu();
+}
+
+function openPlaylistMenu() {
+  const pl = getPlaylist(state.activePlaylistId);
+  if (!pl) return;
+  closePlaylistMenu();
+  const btn = document.getElementById('playlist-menu-btn');
+  const wrap = document.createElement('div');
+  wrap.className = 'kebab-dropdown';
+  wrap.id = 'playlist-kebab-dropdown';
+  wrap.innerHTML = `
+    <button type="button" id="kebab-add-songs"><svg data-icon="plus" viewBox="0 0 24 24"></svg>${escapeHtml(t('addSongsTitle'))}</button>
+    <button type="button" id="kebab-edit"><svg data-icon="${playlistEditMode ? 'check' : 'pencil'}" viewBox="0 0 24 24"></svg>${escapeHtml(playlistEditMode ? t('doneBtn') : t('editBtn'))}</button>
+    ${pl.isFavorites ? '' : `
+    <button type="button" id="kebab-delete" class="is-danger"><svg data-icon="trash" viewBox="0 0 24 24"></svg>${escapeHtml(t('menuDelete'))}</button>
+    `}
+  `;
+  btn.parentElement.style.position = 'relative';
+  btn.parentElement.appendChild(wrap);
+  initIcons(wrap);
+  playlistMenuOpen = true;
+
+  wrap.querySelector('#kebab-add-songs').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closePlaylistMenu();
+    openAddSongsModal(state.activePlaylistId);
+  });
+  wrap.querySelector('#kebab-edit').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closePlaylistMenu();
+    setPlaylistEditMode(!playlistEditMode);
+  });
+  const deleteBtn = wrap.querySelector('#kebab-delete');
+  if (deleteBtn) deleteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closePlaylistMenu();
+    confirmDeletePlaylist(state.activePlaylistId);
+  });
+  wrap.addEventListener('click', (e) => e.stopPropagation());
+}
+
+function closePlaylistMenu() {
+  const wrap = document.getElementById('playlist-kebab-dropdown');
+  if (wrap) wrap.remove();
+  playlistMenuOpen = false;
+}
+
+let playlistEditMode = false;
+function setPlaylistEditMode(on) {
+  // Leaving edit mode commits any pending title edit first, so Done
+  // (or backing out) always saves rather than silently discarding it.
+  if (playlistEditMode && !on) commitPlaylistTitleEdit();
+
+  playlistEditMode = on;
+  document.getElementById('playlist-song-list').classList.toggle('is-editing', on);
+  const doneBtn = document.getElementById('playlist-done-btn');
+  doneBtn.hidden = !on;
+  doneBtn.textContent = t('doneBtn');
+
+  renderPlaylistTitle();
+}
+
+// Renders pv-title as either a static heading (normal browsing) or an
+// inline text input (edit mode) — the "rename" affordance IS the title
+// itself while editing, rather than a separate menu item + popup.
+function renderPlaylistTitle() {
+  const pl = getPlaylist(state.activePlaylistId);
+  if (!pl) return;
+  const titleEl = document.getElementById('pv-title');
+
+  if (playlistEditMode && !pl.isFavorites) {
+    titleEl.innerHTML = '';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'pv-title-input';
+    input.className = 'pv-title-input';
+    input.maxLength = 60;
+    input.autocomplete = 'off';
+    input.value = pl.name;
+    input.addEventListener('click', (e) => e.stopPropagation());
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    });
+    input.addEventListener('blur', () => commitPlaylistTitleEdit());
+    titleEl.appendChild(input);
+  } else {
+    titleEl.textContent = playlistDisplayName(pl);
+  }
+}
+
+function commitPlaylistTitleEdit() {
+  const pl = getPlaylist(state.activePlaylistId);
+  const input = document.getElementById('pv-title-input');
+  if (!pl || !input || pl.isFavorites) return;
+  const name = input.value.trim();
+  if (name && name !== pl.name) {
+    renamePlaylist(pl.id, name);
+    if (state.currentPage === 'playlists') renderPlaylistsList();
+  }
+}
+
+function openPlaylist(id, opts = {}) {
+  const { pushHistory = true } = opts;
+  const pl = getPlaylist(id);
+  if (!pl) return;
+  state.activePlaylistId = id;
+  setPlaylistEditMode(false); // always open a playlist fresh, not mid-edit
+  renderPlaylistView();
+  showPage('playlist-view', { resetScroll: true });
+  if (pushHistory) {
+    pushNavState({ page: 'playlist-view', playlistId: id });
+  }
+}
+
+function renderPlaylistView() {
+  const pl = getPlaylist(state.activePlaylistId);
+  const listEl = document.getElementById('playlist-song-list');
+  const emptyEl = document.getElementById('playlist-view-empty-state');
+  if (!pl) return;
+
+  document.getElementById('pv-count').textContent = t('playlistSongCount', pl.songs.length);
+  emptyEl.textContent = pl.isFavorites ? t('playlistViewEmptyStateFavorites') : t('playlistViewEmptyState');
+
+  listEl.innerHTML = '';
+  const resolved = pl.songs
+    .map(ref => ({ ref, song: findSongByRef(ref.sourceKey, ref.songId) }))
+    .filter(x => x.song);
+  emptyEl.hidden = resolved.length !== 0;
+
+  resolved.forEach(({ ref, song }, index) => {
+    const li = document.createElement('li');
+    li.className = 'song-row-with-remove';
+    li.dataset.sourceKey = ref.sourceKey;
+    li.dataset.songId = song.id;
+
+    const queueIndex = document.createElement('span');
+    queueIndex.className = 'queue-index';
+    queueIndex.textContent = String(index + 1);
+    queueIndex.setAttribute('aria-hidden', 'true');
+    li.appendChild(queueIndex);
+
+    const handle = document.createElement('button');
+    handle.type = 'button';
+    handle.className = 'drag-handle';
+    handle.setAttribute('aria-label', t('reorderHandle'));
+    handle.innerHTML = '<svg data-icon="menu-kebab" viewBox="0 0 24 24" style="transform:rotate(90deg)"></svg>';
+    handle.addEventListener('pointerdown', (e) => onPlaylistDragStart(e, li));
+
+    const row = document.createElement('button');
+    row.className = 'song-row';
+    row.innerHTML = `
+      <span class="song-badge">${song.number}</span>
+      <span class="song-row-text">
+        <span class="song-row-title">${escapeHtml(song.title)}</span>
+        ${song.artist ? `<span class="song-row-sub">${escapeHtml(song.artist)}</span>` : ''}
+      </span>
+    `;
+    row.addEventListener('click', () => { if (!playlistEditMode) openSong(song, { sourceKey: ref.sourceKey }); });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'song-row-remove';
+    removeBtn.setAttribute('aria-label', t('removeFromPlaylist'));
+    removeBtn.innerHTML = '<svg data-icon="close" viewBox="0 0 24 24"></svg>';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Optimistically remove from the UI right away, but hold off on
+      // persisting it — a mistaken tap here (no confirm dialog, on
+      // purpose, since this happens often) is only one "Undo" tap away
+      // from being fixed for the next few seconds.
+      const originalIndex = pl.songs.findIndex(r => r.sourceKey === ref.sourceKey && r.songId === ref.songId);
+      pl.songs = pl.songs.filter(r => !(r.sourceKey === ref.sourceKey && r.songId === ref.songId));
+      renderPlaylistView();
+      if (pl.isFavorites && state.activeSong && state.activeSong.id === ref.songId) updateFavoriteButtonUI();
+
+      showToast(t('toastSongRemoved'), {
+        label: t('undoBtn'),
+        onAction: () => {
+          // Put it back where it was, not just at the end.
+          const idx = Math.min(originalIndex, pl.songs.length);
+          pl.songs.splice(idx, 0, ref);
+          renderPlaylistView();
+          if (pl.isFavorites && state.activeSong && state.activeSong.id === ref.songId) updateFavoriteButtonUI();
+        },
+        onCommit: () => persistPlaylists(),
+      }, 4000);
+    });
+
+    li.appendChild(handle);
+    li.appendChild(row);
+    li.appendChild(removeBtn);
+    listEl.appendChild(li);
+    initIcons(li);
+  });
+
+  // Re-apply edit-mode class/label (keeps Edit/Done in sync with language
+  // changes) without re-running the commit-on-exit logic in
+  // setPlaylistEditMode, since we're not actually toggling anything here.
+  document.getElementById('playlist-song-list').classList.toggle('is-editing', playlistEditMode);
+  const doneBtn = document.getElementById('playlist-done-btn');
+  doneBtn.hidden = !playlistEditMode;
+  doneBtn.textContent = t('doneBtn');
+  renderPlaylistTitle();
+}
+
+// ---------------------------------------------------------
+// Drag-to-reorder for the playlist-view list (edit mode only). Uses
+// Pointer Events so it works with touch (phones) as well as mouse.
+// ---------------------------------------------------------
+let dragLi = null;
+let dragStartY = 0;
+
+function onPlaylistDragStart(e, li) {
+  if (!playlistEditMode) return;
+  dragLi = li;
+  dragStartY = e.clientY;
+  li.classList.add('is-dragging');
+  try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  e.preventDefault();
+}
+
+function onPlaylistDragMove(e) {
+  if (!dragLi) return;
+  const dy = e.clientY - dragStartY;
+  dragLi.style.transform = `translateY(${dy}px)`;
+
+  const listEl = document.getElementById('playlist-song-list');
+  const dragRect = dragLi.getBoundingClientRect();
+  const dragCenter = dragRect.top + dragRect.height / 2;
+
+  for (const sib of Array.from(listEl.children)) {
+    if (sib === dragLi) continue;
+    const sRect = sib.getBoundingClientRect();
+    const sCenter = sRect.top + sRect.height / 2;
+    const dragIsBeforeSib = !!(dragLi.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING);
+    if (dragIsBeforeSib && dragCenter > sCenter) {
+      listEl.insertBefore(dragLi, sib.nextSibling);
+      dragStartY = e.clientY;
+      dragLi.style.transform = 'translateY(0)';
+      break;
+    }
+    if (!dragIsBeforeSib && dragCenter < sCenter) {
+      listEl.insertBefore(dragLi, sib);
+      dragStartY = e.clientY;
+      dragLi.style.transform = 'translateY(0)';
+      break;
+    }
+  }
+}
+
+function onPlaylistDragEnd() {
+  if (!dragLi) return;
+  dragLi.style.transform = '';
+  dragLi.classList.remove('is-dragging');
+  dragLi = null;
+  commitPlaylistOrderFromDom();
+  renderPlaylistView(); // refresh the small queue-position numbers to match the new order
+}
+
+function commitPlaylistOrderFromDom() {
+  const pl = getPlaylist(state.activePlaylistId);
+  if (!pl) return;
+  const listEl = document.getElementById('playlist-song-list');
+  const newOrder = Array.from(listEl.children).map(li => ({
+    sourceKey: li.dataset.sourceKey,
+    songId: li.dataset.songId,
+  }));
+  // songId in the dataset is always a string; match loosely so numeric ids still line up.
+  pl.songs = newOrder
+    .map(ref => pl.songs.find(s => s.sourceKey === ref.sourceKey && String(s.songId) === String(ref.songId)))
+    .filter(Boolean);
+  persistPlaylists();
+}
+
+// ---------------------------------------------------------
+// Shared modal shell
+// ---------------------------------------------------------
+function openModal(title, bodyEl) {
+  document.getElementById('modal-title').textContent = title;
+  const body = document.getElementById('modal-body');
+  body.innerHTML = '';
+  body.appendChild(bodyEl);
+  const overlay = document.getElementById('modal-overlay');
+  overlay.hidden = false;
+  initIcons(overlay);
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').hidden = true;
+  document.getElementById('modal-body').innerHTML = '';
+}
+
+function bindModalShell() {
+  document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+  document.getElementById('modal-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'modal-overlay') closeModal();
+  });
+  initViewportSync();
+}
+
+// ---------------------------------------------------------
+// Mobile keyboard / viewport fix
+// ---------------------------------------------------------
+// On phones (mainly Android Chrome), opening the on-screen keyboard
+// resizes the *visual* viewport but not the *layout* viewport. Our
+// modal overlay is `position: fixed; inset: 0`, which is sized against
+// the layout viewport — so it doesn't know the keyboard ate the bottom
+// half of the screen. Depending on the device this makes the sheet
+// jump upward, get clipped, or appear to only show part of its content.
+//
+// The fix: mirror window.visualViewport's height/offset into CSS custom
+// properties (--vvh, --vv-top) that the modal uses instead of 100vh/0.
+// Browsers without visualViewport support just keep the old 100vh/0
+// fallback defined in the CSS.
+function initViewportSync() {
+  if (!window.visualViewport) return;
+  const root = document.documentElement;
+  const sync = () => {
+    const vv = window.visualViewport;
+    root.style.setProperty('--vvh', `${vv.height}px`);
+    root.style.setProperty('--vv-top', `${vv.offsetTop}px`);
+  };
+  sync();
+  window.visualViewport.addEventListener('resize', sync);
+  window.visualViewport.addEventListener('scroll', sync);
+}
+
+// Focuses `input` only after any in-flight modal-open animation has
+// settled, then — once the keyboard has actually finished animating in —
+// scrolls the input into view within the modal body. Opening the
+// keyboard the instant the sheet starts sliding up was the other half
+// of the "jumps/only shows part of itself" behavior; giving the sheet
+// a moment to land first avoids the two animations fighting each other.
+function focusModalInput(input, delay = 260) {
+  if (!input) return;
+  setTimeout(() => {
+    input.focus();
+    setTimeout(() => {
+      input.scrollIntoView({ block: 'nearest' });
+    }, 300);
+  }, delay);
+}
+
+// ---------------------------------------------------------
+// Create / rename playlist modal
+// ---------------------------------------------------------
+function playlistNameForm(initialValue, onSave) {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <input type="text" class="modal-text-input" id="playlist-name-input" maxlength="60" autocomplete="off">
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" id="playlist-name-cancel"></button>
+      <button type="button" class="btn-primary" id="playlist-name-save"></button>
+    </div>
+  `;
+  const input = wrap.querySelector('#playlist-name-input');
+  input.placeholder = t('playlistNamePlaceholder');
+  input.value = initialValue || '';
+  wrap.querySelector('#playlist-name-cancel').textContent = t('cancelBtn');
+  wrap.querySelector('#playlist-name-save').textContent = t('saveBtn');
+
+  wrap.querySelector('#playlist-name-cancel').addEventListener('click', closeModal);
+  const submit = () => {
+    const name = input.value.trim();
+    if (!name) { input.focus(); return; }
+    onSave(name);
+  };
+  wrap.querySelector('#playlist-name-save').addEventListener('click', submit);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+
+  focusModalInput(input);
+  return wrap;
+}
+
+function promptCreatePlaylist(onCreated) {
+  const form = playlistNameForm('', (name) => {
+    const id = createPlaylist(name);
+    closeModal();
+    showToast(t('toastPlaylistCreated'));
+    if (state.currentPage === 'playlists') renderPlaylistsList();
+    if (onCreated) onCreated(id);
+  });
+  openModal(t('newPlaylistTitle'), form);
+}
+
+function confirmDeletePlaylist(id) {
+  const pl = getPlaylist(id);
+  if (!pl) return;
+  const wrap = document.createElement('div');
+  const p = document.createElement('p');
+  p.className = 'modal-hint';
+  p.style.marginTop = '0';
+  p.textContent = t('deletePlaylistConfirm', playlistDisplayName(pl));
+  const actions = document.createElement('div');
+  actions.className = 'modal-actions';
+  actions.innerHTML = `
+    <button type="button" class="btn-secondary" id="delete-cancel"></button>
+    <button type="button" class="btn-primary" id="delete-confirm" style="background:var(--danger)"></button>
+  `;
+  wrap.appendChild(p);
+  wrap.appendChild(actions);
+  actions.querySelector('#delete-cancel').textContent = t('cancelBtn');
+  actions.querySelector('#delete-confirm').textContent = t('deleteBtn');
+
+  actions.querySelector('#delete-cancel').addEventListener('click', closeModal);
+  actions.querySelector('#delete-confirm').addEventListener('click', () => {
+    deletePlaylist(id);
+    closeModal();
+    showToast(t('toastPlaylistDeleted'));
+    if (state.activePlaylistId === id) {
+      state.activePlaylistId = null;
+      history.back();
+    }
+    if (state.currentPage === 'playlists') renderPlaylistsList();
+  });
+
+  openModal(t('deletePlaylistTitle'), wrap);
+}
+
+// ---------------------------------------------------------
+// "Add to playlist" modal — opened from inside a song. Lists every
+// playlist (Favorites first) as a toggleable checklist, plus a row to
+// create a brand-new playlist and add the song to it in one step.
+// ---------------------------------------------------------
+function openAddToPlaylistModal(sourceKey, songId) {
+  const wrap = document.createElement('div');
+  const list = document.createElement('ul');
+  list.className = 'checklist';
+  wrap.appendChild(list);
+
+  const renderItems = () => {
+    list.innerHTML = '';
+    // Favorites is deliberately excluded here: it already has its own
+    // dedicated heart button right on this same song page (see
+    // #sv-favorite-btn), so offering a second way to do the same thing
+    // from inside this "add to a playlist" picker is redundant — and
+    // worse, easy to mix up with an actual playlist since it renders in
+    // the same list. This modal is only ever opened from that song-page
+    // "+" button (see openAddToPlaylistModal's call sites), so filtering
+    // it out here doesn't affect Favorites anywhere else in the app.
+    state.playlists.order.filter(id => state.playlists.byId[id] && !state.playlists.byId[id].isFavorites).forEach(id => {
+      const pl = state.playlists.byId[id];
+      const inIt = isSongInPlaylist(id, sourceKey, songId);
+      const li = document.createElement('li');
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'checklist-item' + (pl.isFavorites ? ' is-favorites' : '');
+      item.setAttribute('aria-pressed', String(inIt));
+      item.innerHTML = `
+        <span class="checklist-item-icon"><svg data-icon="${pl.isFavorites ? 'heart-filled' : 'nav-playlist'}" viewBox="0 0 24 24"></svg></span>
+        <span style="flex:1">${escapeHtml(playlistDisplayName(pl))}</span>
+        <span class="checklist-check"><svg data-icon="check" viewBox="0 0 24 24"></svg></span>
+      `;
+      item.addEventListener('click', () => {
+        toggleSongInPlaylist(id, sourceKey, songId);
+        if (id === 'favorites') updateFavoriteButtonUI();
+        renderItems();
+      });
+      li.appendChild(item);
+      list.appendChild(li);
+    });
+    initIcons(list);
+  };
+  renderItems();
+
+  const newRow = document.createElement('button');
+  newRow.type = 'button';
+  newRow.className = 'modal-new-playlist-row';
+  newRow.innerHTML = `<svg data-icon="plus" viewBox="0 0 24 24"></svg><span>${escapeHtml(t('newPlaylistTitle'))}</span>`;
+  newRow.addEventListener('click', () => {
+    promptCreatePlaylist((id) => {
+      addSongToPlaylist(id, sourceKey, songId);
+      openAddToPlaylistModal(sourceKey, songId); // reopen this modal with the new playlist checked
+    });
+  });
+  wrap.appendChild(newRow);
+
+  openModal(t('addToPlaylistTitle'), wrap);
+}
+
+// ---------------------------------------------------------
+// "Add songs" modal — opened from inside a playlist. Lets the person
+// search the official song list and toggle songs in or out of the
+// current playlist.
+// ---------------------------------------------------------
+function openAddSongsModal(playlistId) {
+  const wrap = document.createElement('div');
+  const searchWrap = document.createElement('div');
+  searchWrap.className = 'search-bar modal-search';
+  searchWrap.innerHTML = `
+    <svg class="search-icon" data-icon="search" viewBox="0 0 24 24" aria-hidden="true"></svg>
+    <input type="search" id="add-songs-search" class="search-field" inputmode="search" autocomplete="off">
+  `;
+  const list = document.createElement('ul');
+  list.className = 'checklist';
+  wrap.appendChild(searchWrap);
+  wrap.appendChild(list);
+
+  const input = searchWrap.querySelector('#add-songs-search');
+  input.placeholder = t('searchPlaceholder');
+
+  const renderItems = () => {
+    const q = input.value.trim().toLowerCase();
+    const songs = sortSongs(state.sources.official.songs.filter(s => matchesQuery(s, q)), q);
+    list.innerHTML = '';
+    songs.forEach(song => {
+      const inIt = isSongInPlaylist(playlistId, 'official', song.id);
+      const li = document.createElement('li');
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'checklist-item';
+      item.setAttribute('aria-pressed', String(inIt));
+      item.innerHTML = `
+        <span class="checklist-badge">${song.number}</span>
+        <span style="flex:1">
+          ${escapeHtml(song.title)}
+          ${song.artist ? `<div class="checklist-item-sub">${escapeHtml(song.artist)}</div>` : ''}
+        </span>
+        <span class="checklist-check"><svg data-icon="check" viewBox="0 0 24 24"></svg></span>
+      `;
+      item.addEventListener('click', () => {
+        const nowIn = toggleSongInPlaylist(playlistId, 'official', song.id);
+        item.setAttribute('aria-pressed', String(nowIn));
+        if (state.activeSong && state.activeSong.id === song.id) updateFavoriteButtonUI();
+        renderPlaylistView();
+        document.getElementById('pv-count').textContent = t('playlistSongCount', getPlaylist(playlistId).songs.length);
+      });
+      li.appendChild(item);
+      list.appendChild(li);
+    });
+    initIcons(list);
+  };
+  input.addEventListener('input', renderItems);
+  renderItems();
+
+  openModal(t('addSongsTitle'), wrap);
+  focusModalInput(input);
+}
+
+
+async function copyContactEmail(opts = {}) {
+  const { silent = false } = opts;
+  const email = (window.SONGBOOK_APP_CONFIG && window.SONGBOOK_APP_CONFIG.contactEmail) || '';
+  if (!email) return;
+  try {
+    await navigator.clipboard.writeText(email);
+    if (!silent) showToast(t('toastEmailCopied'));
+  } catch (err) {
+    console.error('Songbook: clipboard copy failed —', err);
+    if (!silent) showToast(t('toastEmailCopyFailed'));
+  }
+}
+
+// Puts the contact button/email-fallback back to its starting state: button
+// visible, fallback hidden. Called on language refresh and every time the
+// Settings page is (re)opened, so the button reliably comes back after
+// switching pages, reloading, or reopening the app — even though within a
+// single visit to Settings it disappears the moment it's clicked.
+function resetContactUI() {
+  const contactBtn = document.getElementById('about-contact-btn');
+  const contactFallback = document.getElementById('about-contact-fallback');
+  if (!contactBtn || !contactFallback) return;
+  const email = (window.SONGBOOK_APP_CONFIG && window.SONGBOOK_APP_CONFIG.contactEmail) || '';
+  if (!email) {
+    contactBtn.hidden = true;
+    contactFallback.hidden = true;
+    return;
+  }
+  contactBtn.href = `mailto:${email}`;
+  contactBtn.hidden = false;
+  contactFallback.hidden = true;
+}
+
+function bindAboutPage() {
+  document.getElementById('about-back-btn').addEventListener('click', () => history.back());
+}
+
+function bindSettings() {
+  document.getElementById('about-nav-row').addEventListener('click', () => {
+    showPage('about', { pushHistory: true, resetScroll: true });
+  });
+
+  document.getElementById('reload-songs-btn').addEventListener('click', reloadSongLibrary);
+  document.getElementById('reload-app-btn').addEventListener('click', reloadApp);
+  document.getElementById('export-playlists-btn').addEventListener('click', exportPlaylists);
+  document.getElementById('import-playlists-btn').addEventListener('click', () => {
+    document.getElementById('import-playlists-file').click();
+  });
+  document.getElementById('import-playlists-file').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) importPlaylistsFromFile(file);
+    e.target.value = '';
+  });
+
+  document.getElementById('about-contact-btn').addEventListener('click', () => {
+    // Let the mailto: link proceed as normal (opens the person's mail app,
+    // where available) — this fires alongside that, not instead of it.
+    copyContactEmail({ silent: true });
+    document.getElementById('about-contact-btn').hidden = true;
+    document.getElementById('about-contact-fallback').hidden = false;
+  });
+
+  document.getElementById('about-contact-copy').addEventListener('click', () => {
+    copyContactEmail();
+  });
+
+  const toggle = document.getElementById('theme-toggle');
+  toggle.addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    toggle.setAttribute('aria-checked', String(next === 'dark'));
+    localStorage.setItem('sb-theme', next);
+  });
+
+  document.querySelectorAll('.accent-swatch').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (discoModeActive) stopDiscoMode(); // manual pick wins over the easter egg
+      const accent = btn.dataset.accent;
+      document.documentElement.setAttribute('data-accent', accent);
+      localStorage.setItem('sb-accent', accent);
+      document.querySelectorAll('.accent-swatch').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+    });
+  });
+
+  const langSelect = document.getElementById('ui-lang-select');
+  langSelect.addEventListener('change', () => {
+    state.lang = langSelect.value;
+    localStorage.setItem('sb-ui-lang', state.lang);
+    applyLanguage();
+  });
+
+  const dbSelect = document.getElementById('db-select');
+  // Only 'mn' is a real, selectable option right now (others are coming
+  // soon) — this also corrects a stale value left over from an older
+  // version of the app that allowed picking a different database.
+  dbSelect.value = 'mn';
+  localStorage.setItem('sb-db', 'mn');
+  dbSelect.addEventListener('change', () => {
+    localStorage.setItem('sb-db', dbSelect.value);
+    showToast(t('toastDbSaved'));
+  });
+}
+
+// `action`, if provided, is { label, onAction } — shows an inline button
+// (e.g. "Undo") inside the toast. Its handler fires once, then the toast
+// is dismissed immediately. Duration defaults to 2200ms but callers that
+// offer an undo action pass a longer window so it's actually usable.
+function showToast(msg, action, duration = 2200) {
+  const el = document.getElementById('toast');
+  const msgEl = document.getElementById('toast-msg');
+  const actionEl = document.getElementById('toast-action');
+  msgEl.textContent = msg;
+
+  // Any pending undo from a previous toast must resolve *now* (i.e. the
+  // removal it was guarding becomes permanent) before we repurpose the
+  // shared toast element for a new message.
+  if (showToast._pendingCommit) {
+    const commit = showToast._pendingCommit;
+    showToast._pendingCommit = null;
+    commit();
+  }
+
+  if (action) {
+    actionEl.textContent = action.label;
+    actionEl.hidden = false;
+    actionEl.disabled = false;
+    actionEl.onclick = () => {
+      // Guard against spam-clicks/double-taps firing this twice — once the
+      // action has run once it's done, even if the button is still visible
+      // for the duration of the hide transition.
+      if (actionEl.disabled) return;
+      actionEl.disabled = true;
+      clearTimeout(showToast._t);
+      showToast._pendingCommit = null;
+      actionEl.onclick = null;
+      el.hidden = true;
+      action.onAction();
+    };
+    showToast._pendingCommit = action.onCommit || null;
+  } else {
+    actionEl.hidden = true;
+    actionEl.onclick = null;
+  }
+
+  el.hidden = false;
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => {
+    el.hidden = true;
+    if (showToast._pendingCommit) {
+      const commit = showToast._pendingCommit;
+      showToast._pendingCommit = null;
+      commit();
+    }
+  }, duration);
+}
+
+// ---------------------------------------------------------
+// PWA: install prompt (Android/Desktop) + iOS fallback
+// ---------------------------------------------------------
+let deferredPrompt = null;
+let installState = 'unavailable'; // 'unavailable' | 'insecure' | 'ios' | 'promptable' | 'installed'
+
+function isStandaloneNow() {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+}
+
+function setupInstallPrompt() {
+  if (isStandaloneNow()) {
+    installState = 'installed';
+    refreshInstallLabels();
+    return;
+  }
+
+  // Install (and the underlying service worker) only work on HTTPS or localhost —
+  // this is a browser security requirement, not something the app can work around.
+  if (!window.isSecureContext) {
+    installState = 'insecure';
+    refreshInstallLabels();
+    return;
+  }
+
+  // Modern iPadOS (13+) spoofs its user agent as a desktop Mac by default, so a
+  // plain UA check misses iPads. We additionally detect that case: a "MacIntel"
+  // platform that actually has touch support is an iPad, not a real Mac.
+  const ua = window.navigator.userAgent;
+  const isSpoofedIPad = window.navigator.platform === 'MacIntel'
+    && navigator.maxTouchPoints > 1
+    && !window.MSStream;
+  const isIOS = /iphone|ipad|ipod/i.test(ua) || isSpoofedIPad;
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installState = 'promptable';
+    refreshInstallLabels();
+  });
+
+  document.getElementById('install-btn').addEventListener('click', async () => {
+    if (deferredPrompt) {
+      // The prompt is single-use: capture and clear it before awaiting, so a
+      // stray second click can't reuse an already-consumed prompt event.
+      const promptEvent = deferredPrompt;
+      deferredPrompt = null;
+      promptEvent.prompt();
+      await promptEvent.userChoice;
+      // Intentionally not branching on `outcome` here: accepting the native
+      // dialog does not guarantee installation actually completed. The
+      // `appinstalled` event (and isStandaloneNow() as a fallback) is the
+      // only source of truth for "installed" — see the listener below.
+      if (!isStandaloneNow()) {
+        installState = 'unavailable';
+        refreshInstallLabels();
+      }
+    } else if (isIOS) {
+      showToast(t('toastIosHint'));
+    }
+  });
+
+  installState = isIOS ? 'ios' : 'unavailable';
+  refreshInstallLabels();
+
+  window.addEventListener('appinstalled', () => {
+    installState = 'installed';
+    refreshInstallLabels();
+  });
+}
+
+function refreshInstallLabels() {
+  const installBtn = document.getElementById('install-btn');
+  const installedBadge = document.getElementById('installed-badge');
+  const installSub = document.getElementById('install-sub');
+  const installTitle = document.getElementById('install-title');
+
+  installTitle.textContent = t('installTitle');
+  installBtn.textContent = t('installBtn');
+
+  switch (installState) {
+    case 'installed':
+      installBtn.hidden = true;
+      installedBadge.hidden = false;
+      installedBadge.textContent = t('installedBadgeDone');
+      installSub.textContent = t('installSubInstalled');
+      break;
+    case 'insecure':
+      installBtn.hidden = true;
+      installedBadge.hidden = true;
+      installSub.textContent = t('installSubInsecure');
+      break;
+    case 'ios':
+      installBtn.hidden = false;
+      installedBadge.hidden = true;
+      installSub.textContent = t('installSubIOS');
+      break;
+    case 'promptable':
+      installBtn.hidden = false;
+      installedBadge.hidden = true;
+      installSub.textContent = t('installSub');
+      break;
+    default:
+      installBtn.hidden = true;
+      installedBadge.hidden = true;
+      installSub.textContent = t('installSub');
+  }
+}
+
+// ---------------------------------------------------------
+// Service worker registration (offline-first)
+// Requires HTTPS or localhost — browsers refuse to register
+// service workers on plain http:// or file:// origins.
+// ---------------------------------------------------------
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) {
+    console.warn('Songbook: service workers are not supported in this browser — offline mode and Install are unavailable.');
+    return;
+  }
+  if (!window.isSecureContext) {
+    console.warn('Songbook: not a secure context (HTTPS or localhost) — service worker registration skipped.');
+    return;
+  }
+
+  // When an updated service worker takes over an already-open tab/PWA
+  // window, the JS that's already parsed and running in memory here is
+  // still the OLD version — only the *next* navigation gets the new files.
+  // A single manual reload isn't reliably enough to trigger that either:
+  // per the spec, a reload's navigation request can start (and still get
+  // served by the outgoing worker) before the new one has fully taken
+  // over. So instead of relying on the person to notice something's stale
+  // and refresh, reload automatically — exactly once — the moment control
+  // actually changes hands.
+  //
+  // Two things used to make this fire way more than that "exactly once":
+  //
+  // 1. `controllerchange` also fires the FIRST time a page ever gets a
+  //    service worker (no previous controller to hand off from — this
+  //    page was just loaded plain and a worker claimed it a moment
+  //    later). There's nothing stale to fix in that case; the page in
+  //    memory already matches what just got installed. hadController
+  //    below distinguishes a real handoff from that harmless first claim.
+  //
+  // 2. reloadApp() (the "Reload app" button) unregisters the old worker,
+  //    wipes caches, and calls location.reload() itself to force a fully
+  //    fresh load — but the fresh load then registers a brand new worker,
+  //    which activates and claims this same page, firing controllerchange
+  //    all over again and triggering a SECOND, redundant reload right on
+  //    top of the one the button already did. skipNextAutoReload (written
+  //    to sessionStorage by reloadApp() just before it reloads, so it
+  //    survives the reload) tells this run "the reload already happened
+  //    on purpose — sit this one cycle out."
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloadedForUpdate = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloadedForUpdate) return;
+    reloadedForUpdate = true;
+    if (!hadController) return;
+    let skip = false;
+    try {
+      skip = sessionStorage.getItem('ngw_skip_next_auto_reload') === '1';
+      sessionStorage.removeItem('ngw_skip_next_auto_reload');
+    } catch (e) {
+      // sessionStorage unavailable — fall through and reload as normal;
+      // worst case here is the rare double-reload this was added to
+      // prevent, not a stuck/stale app.
+    }
+    if (skip) return;
+    markVersionSeen();
+    window.location.reload();
+  });
+
+  window.addEventListener('load', () => {
+    // updateViaCache: 'none' makes the browser always fetch this script
+    // (and anything it imports) fresh over the network when checking for
+    // updates, rather than potentially reusing an HTTP-cached copy.
+    navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' }).then((reg) => {
+      console.log('Songbook: service worker registered with scope', reg.scope);
+    }).catch(err => {
+      console.error('Songbook: service worker registration failed —', err);
+    });
+  });
+}
+
+// ---------------------------------------------------------
+// Easter egg #1: a tiny mascot that gently bobs on Saturdays (the
+// Sabbath), top-right of the Songbook page, with a speech bubble to its
+// left. The hand stays still — no waving. Markup lives in index.html
+// (#sabbath-mascot); look/animation in css/style.css (.sabbath-mascot).
+// ---------------------------------------------------------
+function isSabbathToday() {
+  // Sabbath runs Friday 7:00 PM through Saturday 8:00 PM, per the device's
+  // own local clock/timezone — there's no one global "Friday evening", so
+  // this deliberately goes with whatever time it is wherever the person
+  // actually is. (Previously just "is it Saturday" all day; narrowed to
+  // this window to better match when Sabbath is actually observed.)
+  //
+  // Testing hook: open the app with ?previewSabbath=1 in the URL (e.g.
+  // index.html?previewSabbath=1) to force the mascot on regardless of
+  // what day/time it actually is — no need to change the device's clock
+  // just to preview it. Harmless to leave in; nobody stumbles into it by
+  // accident since it takes a deliberate query param.
+  if (new URLSearchParams(location.search).get('previewSabbath') === '1') return true;
+  const now = new Date();
+  const day = now.getDay(); // Sunday=0 ... Friday=5, Saturday=6
+  const minutesOfDay = now.getHours() * 60 + now.getMinutes();
+  const FRIDAY_START = 19 * 60;     // 7:00 PM
+  const SATURDAY_END = 20 * 60;     // 8:00 PM
+  if (day === 5) return minutesOfDay >= FRIDAY_START;
+  if (day === 6) return minutesOfDay < SATURDAY_END;
+  return false;
+}
+
+function updateSabbathMascotText() {
+  const bubble = document.getElementById('sabbath-bubble');
+  if (bubble) bubble.textContent = t('sabbathGreeting');
+}
+
+function initSabbathMascot() {
+  const el = document.getElementById('sabbath-mascot');
+  if (!el) return;
+
+  const refresh = () => {
+    const show = isSabbathToday();
+    el.hidden = !show;
+    if (show) updateSabbathMascotText();
+  };
+  refresh();
+
+  // Covers the rare case of the app being left open across midnight —
+  // cheap enough to just poll rather than schedule a precise timeout.
+  setInterval(refresh, 5 * 60 * 1000);
+}
+
+// ---------------------------------------------------------
+// Easter egg #1b: light snow falling along the top of the screen during
+// Christmas week (Dec 15 – Jan 1 inclusive, device's own local clock).
+// Fixed to the viewport, not any one .page, so it's visible everywhere
+// and isn't rebuilt on every page transition. Deliberately confined to a
+// short strip along the top (see .christmas-snow's fixed height in
+// style.css) rather than the whole screen, and kept sparse/low-opacity —
+// this is meant to be a quiet seasonal touch sitting above the content,
+// not something that competes with it for attention.
+// ---------------------------------------------------------
+function isChristmasWeek() {
+  // Testing hook: ?previewChristmas=1 forces it on regardless of the
+  // actual date — same idea as ?previewSabbath=1 above.
+  if (new URLSearchParams(location.search).get('previewChristmas') === '1') return true;
+  const now = new Date();
+  const month = now.getMonth(); // 0-indexed: 11 = December, 0 = January
+  const date = now.getDate();
+  return (month === 11 && date >= 15) || (month === 0 && date === 1);
+}
+
+function initChristmasSnow() {
+  const el = document.getElementById('christmas-snow');
+  if (!el) return;
+
+  // Poll like the Sabbath mascot below — covers the app being left open
+  // across the moment Christmas week actually ends (or, for previewing,
+  // across a manual system-clock change), so the fade-out is something a
+  // person could actually see happen rather than only ever applying
+  // silently on next load.
+  const CHECK_INTERVAL = 5 * 60 * 1000;
+  let fadeOutTimer = null;
+
+  const buildFlakes = () => {
+    if (el.childElementCount) return; // already built for this session
+    // Built once as plain positioned/animated <span>s (no canvas/JS-driven
+    // rAF loop needed for something this simple) — each flake gets a
+    // randomized horizontal position, size, fall speed, start delay, drift,
+    // and opacity so the field doesn't look mechanically uniform.
+    const COUNT = 20;
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < COUNT; i++) {
+      const flake = document.createElement('span');
+      flake.className = 'snowflake';
+      const size = 3 + Math.random() * 4; // 3–7px
+      const duration = 7 + Math.random() * 6; // 7–13s to fall through the strip
+      const delay = Math.random() * duration; // stagger start so they don't fall in sync
+      const drift = (Math.random() * 30 - 15).toFixed(1); // -15..15px sideways over the fall
+      flake.style.left = `${(Math.random() * 100).toFixed(1)}%`;
+      flake.style.width = `${size}px`;
+      flake.style.height = `${size}px`;
+      flake.style.opacity = (0.3 + Math.random() * 0.45).toFixed(2);
+      flake.style.animationDuration = `${duration.toFixed(1)}s`;
+      flake.style.animationDelay = `-${delay.toFixed(1)}s`; // negative delay = starts mid-fall, so the strip isn't empty on first render
+      flake.style.setProperty('--drift', `${drift}px`);
+      frag.appendChild(flake);
+    }
+    el.appendChild(frag);
+  };
+
+  const refresh = () => {
+    const show = isChristmasWeek();
+
+    if (show) {
+      // Coming back on (e.g. the clock rolled back during a preview, or
+      // this is the very first check) — cancel any fade-out in progress
+      // and show immediately; only the ending needs to be gentle.
+      if (fadeOutTimer) { clearTimeout(fadeOutTimer); fadeOutTimer = null; }
+      el.hidden = false;
+      el.classList.remove('christmas-snow-hiding');
+      buildFlakes();
+      return;
+    }
+
+    if (el.hidden) return; // already fully hidden, nothing to fade
+    if (fadeOutTimer) return; // fade already in progress
+
+    // Start the fade (CSS transition on .christmas-snow-hiding, see
+    // style.css) rather than snapping straight to [hidden] — that's the
+    // instant cut this replaces. Only actually hide + clear the flakes
+    // once the transition has had time to finish.
+    el.classList.add('christmas-snow-hiding');
+    fadeOutTimer = setTimeout(() => {
+      el.hidden = true;
+      el.classList.remove('christmas-snow-hiding');
+      el.innerHTML = '';
+      fadeOutTimer = null;
+    }, 2500); // slightly longer than style.css's 2.4s transition
+  };
+
+  refresh();
+  setInterval(refresh, CHECK_INTERVAL);
+}
+
+// ---------------------------------------------------------
+// Easter egg #2: tap "Accent color" in Settings 3 times to send the
+// accent hues on a slow, continuous drift through the color wheel; tap
+// 3 times again to stop. Only --accent/--accent-strong/--accent-tint
+// drift — ink/paper/surface stay put, so the app stays readable.
+// ---------------------------------------------------------
+
+// Mirrors the values in css/style.css's html[data-accent="…"] rules —
+// kept here (rather than read live off computed styles) so disco mode
+// always starts from the *true* base color, even if it's re-triggered
+// mid-animation.
+const ACCENT_PALETTE = {
+  periwinkle: { light: ['#5B7FDE', '#3A56AE', '#E4EAFB'], dark: ['#8CA6EE', '#C7D4F8', '#1E2A44'] },
+  sage:       { light: ['#6FA37E', '#3F6350', '#E3EEE6'], dark: ['#8FC29E', '#C8E6D0', '#1C2E22'] },
+  lavender:   { light: ['#8C7FCB', '#5B4FA8', '#EDEAFB'], dark: ['#B3A8E8', '#DCD5F5', '#241F3D'] },
+  aqua:       { light: ['#44CAFD', '#0E86B8', '#E1F6FE'], dark: ['#6FDBFF', '#BEEFFF', '#113247'] },
+  cinnamon:   { light: ['#A9762F', '#8C6526', '#F1E4C8'], dark: ['#D9A94B', '#E7BE6C', '#2C2618'] },
+  red:        { light: ['#E8919E', '#B5586B', '#FBEBEE'], dark: ['#F0A3AF', '#FBD6DC', '#3A252A'] },
+};
+
+function hexToHsl(hex) {
+  const n = hex.replace('#', '');
+  const r = parseInt(n.substring(0, 2), 16) / 255;
+  const g = parseInt(n.substring(2, 4), 16) / 255;
+  const b = parseInt(n.substring(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s;
+  const l = (max + min) / 2;
+  if (max === min) {
+    h = s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      default: h = (r - g) / d + 4;
+    }
+    h *= 60;
+  }
+  return { h, s, l };
+}
+
+function hslToHex(h, s, l) {
+  h = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if (h < 60)       { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else              { r = c; g = 0; b = x; }
+  const toHex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+let discoModeActive = false;
+let discoInterval = null;
+let discoHue = 0;
+
+const DISCO_TICK_MS = 300;
+const DISCO_PERIOD_SECONDS = 48; // one full hue rotation every 48s — slow, not fast
+
+function startDiscoMode() {
+  if (discoModeActive) return;
+  discoModeActive = true;
+
+  const currentAccent = document.documentElement.getAttribute('data-accent') || 'aqua';
+  const currentTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  const base = (ACCENT_PALETTE[currentAccent] || ACCENT_PALETTE.aqua)[currentTheme];
+  const baseHsl = base.map(hexToHsl);
+
+  discoHue = 0;
+  const root = document.documentElement;
+  const step = () => {
+    discoHue = (discoHue + (360 * DISCO_TICK_MS / 1000) / DISCO_PERIOD_SECONDS) % 360;
+    root.style.setProperty('--accent', hslToHex(baseHsl[0].h + discoHue, baseHsl[0].s, baseHsl[0].l));
+    root.style.setProperty('--accent-strong', hslToHex(baseHsl[1].h + discoHue, baseHsl[1].s, baseHsl[1].l));
+    root.style.setProperty('--accent-tint', hslToHex(baseHsl[2].h + discoHue, baseHsl[2].s, baseHsl[2].l));
+  };
+  step();
+  discoInterval = setInterval(step, DISCO_TICK_MS);
+}
+
+function stopDiscoMode() {
+  discoModeActive = false;
+  if (discoInterval) clearInterval(discoInterval);
+  discoInterval = null;
+  // Drop the inline overrides — the transition already registered on
+  // :root (see css/style.css) fades this back to the real selected
+  // accent smoothly instead of snapping.
+  const root = document.documentElement;
+  root.style.removeProperty('--accent');
+  root.style.removeProperty('--accent-strong');
+  root.style.removeProperty('--accent-tint');
+}
+
+function bindAccentDiscoEasterEgg() {
+  const title = document.getElementById('t-accentTitle');
+  if (!title) return;
+  let clickTimes = [];
+  title.addEventListener('click', () => {
+    const now = Date.now();
+    clickTimes = clickTimes.filter(ts => now - ts < 800).concat(now);
+    if (clickTimes.length >= 3) {
+      clickTimes = [];
+      discoModeActive ? stopDiscoMode() : startDiscoMode();
+    }
+  });
+}
