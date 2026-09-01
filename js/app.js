@@ -1472,21 +1472,60 @@ function renderLyrics(opts = {}) {
       lineEl.className = 'lyric-line';
 
       // Tokenize on [Chord] markers: each chord attaches to the text run that follows it,
-      // up to the next chord marker (or end of line). Leading text with no chord is its own token.
+      // up to the next chord marker (or end of line). Leading text with no chord is its own run.
+      // `precededByBreak` records whether an actual word boundary (whitespace, or start of
+      // line) separates this run from whatever text came right before it. Chords are
+      // routinely dropped in the middle of a word to mark the exact syllable they land on
+      // (e.g. "алдар[Em]шаач", "A[E]а" in this songbook's own data) — that split must NOT be
+      // treated as a word break, or the two halves get rendered as separate words with a gap
+      // torn into the middle of one, which is the "chords splitting text" bug.
       const chordPositions = [...line.matchAll(/\[([^\]]+)\]/g)];
-      const tokens = [];
+      const runs = [];
       if (chordPositions.length === 0) {
-        tokens.push({ chord: null, text: line });
+        runs.push({ chord: null, text: line, precededByBreak: true });
       } else {
         if (chordPositions[0].index > 0) {
-          tokens.push({ chord: null, text: line.slice(0, chordPositions[0].index) });
+          runs.push({ chord: null, text: line.slice(0, chordPositions[0].index), precededByBreak: true });
         }
         chordPositions.forEach((cm, i) => {
           const textStart = cm.index + cm[0].length;
           const textEnd = i + 1 < chordPositions.length ? chordPositions[i + 1].index : line.length;
-          tokens.push({ chord: cm[1], text: line.slice(textStart, textEnd) });
+          const precedingChar = cm.index > 0 ? line[cm.index - 1] : '';
+          const precededByBreak = cm.index === 0 || /\s/.test(precedingChar);
+          runs.push({ chord: cm[1], text: line.slice(textStart, textEnd), precededByBreak });
         });
       }
+
+      // Flatten each run into per-word "pieces". A chord can also cover a run of several
+      // whole words before the next chord change (e.g. "[G]word1 word2 word3") — splitting
+      // those into one piece per word (chord on the first only) gives flex-wrap normal
+      // word-level wrapping granularity, so only the word that doesn't fit moves down, not
+      // the whole run. Each piece remembers whether it starts a new word (normal spacing
+      // before it) or is a mid-word continuation of the piece before it (no space in the
+      // source — must render with zero gap so the letters stay visually joined).
+      const pieces = [];
+      runs.forEach(run => {
+        const words = run.text.split(/\s+/).filter(Boolean);
+        if (words.length === 0) {
+          pieces.push({ chord: run.chord, text: '', startsNewWord: run.precededByBreak });
+        } else {
+          words.forEach((w, i) => {
+            pieces.push({ chord: i === 0 ? run.chord : null, text: w, startsNewWord: i === 0 ? run.precededByBreak : true });
+          });
+        }
+      });
+
+      // Group consecutive continuation pieces (mid-word chord splits) together — each group
+      // is rendered as ONE flex item on the line, so the outer line's word-gap only ever
+      // appears between real words, never inside one.
+      const groups = [];
+      pieces.forEach(piece => {
+        if (piece.startsNewWord || groups.length === 0) {
+          groups.push([piece]);
+        } else {
+          groups[groups.length - 1].push(piece);
+        }
+      });
 
       // A line with no chord at all shouldn't still reserve a chord
       // badge's worth of height above its words — that leaves a "phantom"
@@ -1496,47 +1535,37 @@ function renderLyrics(opts = {}) {
       // line-height) when it actually has a chord on it; otherwise fall
       // back to normal, closer-set body-text spacing — same idea WorshipLeader
       // and similar chord-chart apps use for spoken/plain lyric lines.
-      const lineHasChord = tokens.some(tok => tok.chord);
+      const lineHasChord = pieces.some(p => p.chord);
       lineEl.classList.toggle('is-plain', !lineHasChord);
 
-      tokens.forEach(tok => {
-        // A chord can cover a run of several words before the next chord
-        // change (e.g. "[G]word1 word2 word3"). Rendering that whole run
-        // as a single flex item bundles all its words into one unit for
-        // line-wrapping — and because flexbox decides what fits on a row
-        // using each item's full *unwrapped* width, not its ability to
-        // wrap internally, an entire multi-word run gets pushed to the
-        // next row even when only its last word doesn't fit, leaving a
-        // dead gap at the end of the row above. Splitting each run into
-        // one token per word (chord tag on the first word only) gives
-        // flex-wrap the same word-level granularity normal text has, so
-        // only the word that doesn't fit moves down — not the whole run.
-        const words = tok.text.split(/\s+/).filter(Boolean);
-        if (words.length === 0) words.push('');
-        words.forEach((word, i) => {
-          const wrap = document.createElement('span');
-          wrap.className = 'lyric-token';
-          if (i === 0 && tok.chord) {
+      groups.forEach(group => {
+        const wrap = document.createElement('span');
+        wrap.className = 'lyric-token';
+        group.forEach(piece => {
+          const pieceEl = document.createElement('span');
+          pieceEl.className = 'lyric-piece';
+          if (piece.chord) {
             const chordEl = document.createElement('span');
             chordEl.className = 'chord-tag';
-            chordEl.textContent = transposeChord(tok.chord, state.transpose);
+            chordEl.textContent = transposeChord(piece.chord, state.transpose);
             if (animateChords) {
               chordEl.classList.add('chord-pop');
               chordEl.style.setProperty('--chord-pop-delay', Math.min(chordAnimIndex * 12, 380) + 'ms');
               chordAnimIndex += 1;
             }
-            wrap.appendChild(chordEl);
-          } else if (word && lineHasChord) {
+            pieceEl.appendChild(chordEl);
+          } else if (piece.text && lineHasChord) {
             const spacer = document.createElement('span');
             spacer.className = 'chord-tag-spacer';
-            wrap.appendChild(spacer);
+            pieceEl.appendChild(spacer);
           }
           const textEl = document.createElement('span');
           textEl.className = 'lyric-word';
-          textEl.textContent = word || '\u00A0';
-          wrap.appendChild(textEl);
-          lineEl.appendChild(wrap);
+          textEl.textContent = piece.text || '\u00A0';
+          pieceEl.appendChild(textEl);
+          wrap.appendChild(pieceEl);
         });
+        lineEl.appendChild(wrap);
       });
 
       sectionEl.appendChild(lineEl);

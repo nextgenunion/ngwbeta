@@ -897,8 +897,13 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   align-items: flex-end;
   /* Word tokens no longer carry their own embedded space character (see
      renderLyrics in app.js) — column-gap replaces that spacing between
-     words on the same row; row-gap gives a little breathing room on the
-     rare line long enough to wrap within itself. */
+     words on the same row. row-gap is deliberately equal to margin-bottom:
+     a lyric line that's long enough to wrap within itself becomes two (or
+     more) flex rows, and if that row-gap doesn't match the margin between
+     *separate* lines, wrapped rows end up visibly closer together than
+     non-wrapped lines sitting right next to them — the "inconsistent
+     vertical spacing" bug. Keep the two values yoked together (see
+     .is-plain below, which needs a bigger row-gap for the same reason). */
   gap: 4px 0.3em;
   margin-bottom: 4px;
   line-height: 1.15;
@@ -908,11 +913,14 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
    in favor of normal reading spacing — closer to how a plain lyric or
    spoken line reads in WorshipLeader/OnSong, and closer to ordinary body
    text generally, rather than carrying a chord chart's spacing with no
-   chords to justify it. */
+   chords to justify it. row-gap is bumped to match margin-bottom (see the
+   comment above) so a plain line that wraps onto a second row gets the
+   same breathing room as the gap to the next line down. */
 .lyric-line.is-plain {
   align-items: baseline;
   line-height: 1.5;
   margin-bottom: 10px;
+  gap: 10px 0.3em;
 }
 
 .lyric-section-number {
@@ -925,7 +933,21 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   opacity: 0.75;
 }
 
+/* .lyric-token is one whole *visual word* — one flex item on the line, so
+   the line's word-gap only ever falls between real words. Most words are
+   a single .lyric-piece. When a chord lands mid-word (see renderLyrics in
+   app.js) the word is split into two or more .lyric-piece columns inside
+   the SAME .lyric-token, joined here with zero gap so the letters stay
+   touching — only the piece boundary gets a chord tag above it, the
+   letters themselves never show a gap. */
 .lyric-token {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+.lyric-piece {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
