@@ -712,9 +712,36 @@ function initSplash() {
 // Preferences (persisted locally — offline-first, no cloud)
 // ---------------------------------------------------------
 function loadPrefs() {
-  const theme = localStorage.getItem('sb-theme') || 'light';
+  // Default to the system's light/dark preference on first run (no saved
+  // choice yet) rather than hardcoding 'light'. This matters beyond just
+  // matching the phone's look: browsers that algorithmically "force dark"
+  // pages which don't visibly follow prefers-color-scheme (Chrome's Auto
+  // Dark Theme on Android, Samsung Internet's forced dark) back off once a
+  // page's own colors actually track the system setting — so following it
+  // ourselves, well, is also the fix for those forced/inverted-color
+  // renders. Once the person picks a theme in Settings, that explicit
+  // choice always wins over the system setting from then on.
+  const savedTheme = localStorage.getItem('sb-theme');
+  const systemPrefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
   document.documentElement.setAttribute('data-theme', theme);
   document.getElementById('theme-toggle').setAttribute('aria-checked', String(theme === 'dark'));
+
+  // If the person has never explicitly chosen a theme, keep following the
+  // system setting live (e.g. Android's scheduled dark mode kicking in at
+  // sunset) instead of freezing whatever it was on first load.
+  if (!savedTheme && window.matchMedia) {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSystemThemeChange = (e) => {
+      if (localStorage.getItem('sb-theme')) return; // person has since made an explicit choice
+      const next = e.matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+      const toggle = document.getElementById('theme-toggle');
+      if (toggle) toggle.setAttribute('aria-checked', String(next === 'dark'));
+    };
+    if (mq.addEventListener) mq.addEventListener('change', onSystemThemeChange);
+    else if (mq.addListener) mq.addListener(onSystemThemeChange); // older WebView/Samsung Internet
+  }
 
   const accent = localStorage.getItem('sb-accent') || 'aqua';
   document.documentElement.setAttribute('data-accent', accent);
