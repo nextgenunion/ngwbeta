@@ -25,6 +25,8 @@ window.SONGBOOK_LANG.kr = {
   chordStyleSub: "가사 위에 코드를 표시하는 방식",
   chordStyleChip: "칩",
   chordStyleText: "텍스트",
+  hideChordsTitle: "코드 숨기기",
+  hideChordsSub: "코드 없이 가사만 표시",
   settingsTitle: "설정",
   sectionAppearance: "화면",
   darkModeTitle: "다크 모드",

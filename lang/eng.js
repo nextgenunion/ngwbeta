@@ -29,6 +29,8 @@ window.SONGBOOK_LANG.en = {
   chordStyleSub: "How chords are displayed above lyrics",
   chordStyleChip: "Chips",
   chordStyleText: "Text",
+  hideChordsTitle: "Hide chords",
+  hideChordsSub: "Show lyrics only, without chords",
   settingsTitle: "Settings",
   sectionAppearance: "Appearance",
   darkModeTitle: "Dark mode",

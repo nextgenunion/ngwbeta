@@ -28,6 +28,8 @@ window.SONGBOOK_LANG.mn2 = {
   chordStyleSub: "Аккордыг үгийн дээр хэрхэн харуулах",
   chordStyleChip: "Дугтуй",
   chordStyleText: "Текст",
+  hideChordsTitle: "Аккорд нуух",
+  hideChordsSub: "Аккордгүйгээр зөвхөн үгийг харуулах",
   settingsTitle: "ᠲᠣᢈᠢᠷᠠᠭ᠎ᠠ",
   sectionAppearance: "ᠬᠠᠷᠠᠭᠳᠠᠴᠠ",
   darkModeTitle: "ᠬᠠᠷᠠᠩᠬᠤᠢ ᠭᠣᠷᠢᠮ",

@@ -850,6 +850,17 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   background: var(--accent-strong);
   color: var(--paper);
 }
+/* Dark mode inverts --accent-strong to a pale text-tint (readable as text
+   on a dark surface — see .btn-secondary), not a fill — using it as the
+   active pill's *background* here left the pressed segment washed-out
+   pale against the dark chrome around it, the same mismatch .btn-primary
+   already corrects for by switching to --accent/--paper-dim in dark mode.
+   Mirror that fix here so the pressed Chips/Text (and Hide chords) segment
+   reads as a solid, on-brand fill in both themes. */
+html[data-theme="dark"] .seg-toggle-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--paper-dim);
+}
 
 .sv-labels { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
 .sv-label-chip {
@@ -870,7 +881,12 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
-  padding: 24px 14px 28px;
+  /* Horizontal padding sits between v1.0.2's roomier 20px and a later,
+     tighter 14px pass that traded too much breathing room for line-width
+     on long lyrics. Split the difference rather than reverting outright —
+     still meaningfully narrower than v1.0.2 so long lines keep most of
+     the width they gained, just not as cramped as 14px felt. */
+  padding: 24px 17px 28px;
   box-shadow: var(--shadow-1);
   overflow-x: hidden;
 }
@@ -878,17 +894,19 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
    the reading-width budget (--page-pad above frees the margin outside
    the card). Kept roomier on wider screens where width isn't scarce. */
 @media (max-width: 480px) {
-  .lyrics-container { padding-left: 10px; padding-right: 10px; }
+  .lyrics-container { padding-left: 12px; padding-right: 12px; }
 }
 
 .lyric-section { margin-top: 24px; }
 .lyric-section:first-child { margin-top: 0; }
 /* Indent is a visual cue (this section repeats/echoes the one above it),
    not a layout requirement — kept modest so it doesn't eat into the
-   already-scarce line width on narrow phones. */
-.lyric-section.is-indented { padding-left: 20px; }
+   already-scarce line width on narrow phones. Nudged up slightly from a
+   tighter 20px pass (v1.0.2 was 32px) for a bit more breathing room,
+   short of going all the way back. */
+.lyric-section.is-indented { padding-left: 24px; }
 @media (max-width: 480px) {
-  .lyric-section.is-indented { padding-left: 12px; }
+  .lyric-section.is-indented { padding-left: 14px; }
 }
 
 .lyric-line {
@@ -986,6 +1004,17 @@ html[data-chord-style="text"] .chord-tag {
   box-shadow: none;
 }
 .chord-tag-spacer { height: calc(var(--chord-size) + 6px); }
+
+/* Hide chords (opt-in via the switch under the Chord style toggle):
+   chords stay in the song data and the Chips/Text choice is preserved
+   underneath, but every chord tag is removed from view and its reserved
+   row collapses to 0 so lyric lines pull up tight with no gap left where
+   the chords used to sit — same idea as .is-plain's tighter rhythm, just
+   applied everywhere rather than only on already-chordless lines. */
+html[data-hide-chords="true"] .chord-tag,
+html[data-hide-chords="true"] .chord-tag-spacer {
+  display: none;
+}
 
 /* Subtle "pop" when chords change (transpose up/down/reset). Applied only
    to the chord tags on a re-render triggered by an actual transpose

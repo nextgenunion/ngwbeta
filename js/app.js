@@ -108,6 +108,7 @@ const state = {
   lyricsSize: 1.05,   // rem
   chordSize: 0.82,    // rem
   chordStyle: 'chip', // 'chip' | 'text' — see applyChordStyle()
+  hideChords: false,  // see applyHideChords()
   lang: 'mn',
   currentPage: 'songs', // mirrors whichever page is currently visible (see showPage)
   playlists: { order: [], byId: {} }, // see "Playlists" section below
@@ -777,6 +778,9 @@ function loadPrefs() {
   const savedChordStyle = localStorage.getItem('sb-chord-style');
   if (savedChordStyle === 'chip' || savedChordStyle === 'text') state.chordStyle = savedChordStyle;
   applyChordStyle();
+
+  state.hideChords = localStorage.getItem('sb-hide-chords') === 'true';
+  applyHideChords();
 }
 
 function applyFontSizes() {
@@ -794,6 +798,18 @@ function applyChordStyle() {
   document.querySelectorAll('#chord-style-toggle [data-chord-style]').forEach(btn => {
     btn.setAttribute('aria-pressed', String(btn.dataset.chordStyle === state.chordStyle));
   });
+}
+
+// Hide chords entirely (opt-in, sits right below the Chips/Text toggle):
+// lyrics-only view for people who already know the song, or a leader who
+// wants the words on screen without chord clutter. Doesn't touch song
+// data or the Chips/Text choice underneath — see the
+// html[data-hide-chords="true"] rule in style.css for what's actually
+// hidden, same attribute-driven pattern as applyChordStyle() above.
+function applyHideChords() {
+  document.documentElement.setAttribute('data-hide-chords', String(state.hideChords));
+  const toggle = document.getElementById('hide-chords-toggle');
+  if (toggle) toggle.setAttribute('aria-checked', String(state.hideChords));
 }
 
 // ---------------------------------------------------------
@@ -828,6 +844,8 @@ function applyLanguage() {
     't-chordStyleSub': 'chordStyleSub',
     't-chordStyleChip': 'chordStyleChip',
     't-chordStyleText': 'chordStyleText',
+    't-hideChordsTitle': 'hideChordsTitle',
+    't-hideChordsSub': 'hideChordsSub',
     't-settingsTitle': 'settingsTitle',
     't-sectionAppearance': 'sectionAppearance',
     't-darkModeTitle': 'darkModeTitle',
@@ -1483,7 +1501,23 @@ function renderLyrics(opts = {}) {
     const sectionEl = document.createElement('div');
     sectionEl.className = 'lyric-section' + (isIndented ? ' is-indented' : '');
 
-    if (numberParts) {
+    // A section's first line can open with an explicit label like "Гүүр:"
+    // (Bridge:) or "Дахилт:" (Chorus:) instead of relying on the plain
+    // sequence number — the label is whatever text (letters/spaces only,
+    // no digits or [chord] markers) sits before the FIRST colon on that
+    // line. When present it's stripped from the line before chord
+    // tokenizing and rendered in place of the number; when absent, the
+    // section falls back to the existing "1, 2, 3…" numbering below.
+    const firstLineTrimmed = sectionLines[0].replace(/^\s+/, '');
+    const labelMatch = firstLineTrimmed.match(/^([^\d\[\]:]+):(.*)$/);
+    const sectionLabel = labelMatch ? labelMatch[1].trim() : null;
+
+    if (sectionLabel) {
+      const numEl = document.createElement('div');
+      numEl.className = 'lyric-section-number';
+      numEl.textContent = sectionLabel;
+      sectionEl.appendChild(numEl);
+    } else if (numberParts) {
       const numEl = document.createElement('div');
       numEl.className = 'lyric-section-number';
       numEl.textContent = String(sectionIdx + 1);
@@ -1492,8 +1526,11 @@ function renderLyrics(opts = {}) {
 
     sectionLines.forEach((rawLine, lineIdx) => {
       // Leading whitespace on the first line is only a structural indent
-      // marker (see isIndented above), not literal spacing to render.
-      const line = lineIdx === 0 ? rawLine.replace(/^\s+/, '') : rawLine;
+      // marker (see isIndented above), not literal spacing to render. The
+      // section label (if any) was already pulled out above and is
+      // likewise stripped here so it isn't rendered twice.
+      let line = lineIdx === 0 ? rawLine.replace(/^\s+/, '') : rawLine;
+      if (lineIdx === 0 && labelMatch) line = labelMatch[2].replace(/^\s+/, '');
 
       const lineEl = document.createElement('div');
       lineEl.className = 'lyric-line';
@@ -2532,6 +2569,13 @@ function bindSettings() {
       applyChordStyle();
       localStorage.setItem('sb-chord-style', state.chordStyle);
     });
+  });
+
+  const hideChordsToggle = document.getElementById('hide-chords-toggle');
+  hideChordsToggle.addEventListener('click', () => {
+    state.hideChords = !state.hideChords;
+    applyHideChords();
+    localStorage.setItem('sb-hide-chords', String(state.hideChords));
   });
 
   const langSelect = document.getElementById('ui-lang-select');

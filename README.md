@@ -1,4 +1,4 @@
-# Next Gen Worship — Worship Song App (v2.0.23-beta — Playlists, Favorites, Chord Visibility)
+# Next Gen Worship — Worship Song App (v2.2.1-beta — Playlists, Favorites, Chord Visibility, Hide Chords)
 
 An offline-first worship songbook PWA. Static HTML/CSS/JS, no build step, no
 backend — built to run on GitHub Pages and install like a native app.
@@ -29,6 +29,15 @@ and Sheet Music are still ahead — see "Built for what's next", below.
   `ngworship-playlists.json` file, the supported way to carry playlists to
   a different browser on the same phone (see below for why this is a
   manual step, not automatic)
+- **Hide chords** (Settings → Appearance, right under Chord style) — a
+  switch for a lyrics-only view; song data and the Chips/Text choice
+  underneath are untouched, chords just stop rendering until switched
+  back on
+- Fixed the Chord style segmented control (Chips/Text) rendering with
+  washed-out, low-contrast colors on its active segment in dark mode
+- Eased the lyrics card's horizontal padding back up slightly — a
+  previous pass had tightened it more than intended chasing width for
+  long lyric lines
 
 ## What's in this version (carried over from v1)
 
