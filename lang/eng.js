@@ -41,7 +41,7 @@ window.SONGBOOK_LANG.en = {
   sectionLangDb: "Language & Song Database",
   dbTitle: "Song database",
   dbSub: "Choose which songbook source to use",
-  dbComingSoon: (name) => `${name} — coming soon`,
+  dbOptionEnglish: "English",
   uiLangTitle: "App language",
   uiLangSub: "Choose the language for menus and buttons",
   sectionApp: "App",
@@ -122,14 +122,21 @@ window.SONGBOOK_LANG.en = {
   // Songbook page on Saturdays (Sabbath). See initSabbathMascot() in app.js.
   sabbathGreeting: "Happy Sabbath!",
 
-  // Developer options — hidden Settings section unlocked by tapping the
-  // About page's app icon 3 times. See initDevOptions() in app.js.
+  // Developer options — its own dedicated page, reached via a hidden
+  // Settings row unlocked by tapping the About page's app icon 3 times.
+  // See initDevOptions() in app.js.
   toastDevUnlocked: "Developer options unlocked",
   sectionDevOptions: "Developer options",
-  devEasterEggsTitle: "Force easter eggs on",
-  devEasterEggsSub: "Preview the Sabbath mascot, Christmas snow, and party mode without waiting for their date or tapping their own trigger. Turning this off doesn't disable them — each still works its own original way.",
+  sectionDevEasterEggs: "Easter eggs",
+  devSabbathTitle: "Force Sabbath mascot on",
+  devSabbathSub: "Preview it without waiting for Friday evening/Saturday. Turning this off doesn't disable it — it still shows on its own on Sabbath.",
+  devChristmasTitle: "Force Christmas snow on",
+  devChristmasSub: "Preview it without waiting for December. Turning this off doesn't disable it — it still shows on its own each December.",
+  devPartyTitle: "Force party mode on",
+  devPartySub: "Preview it without tapping \"Accent color\" 3 times. Turning this off doesn't disable it — that 3-tap trigger still works on its own.",
+  sectionDevInProgress: "Still being finished",
   devTradMongolianTitle: "Traditional Mongolian script",
-  devTradMongolianSub: "Adds the vertical traditional-script option to the language list above (still being finished)",
+  devTradMongolianSub: "Adds the vertical traditional-script option to the language list in Settings",
   devCreditsTitle: "Show credits",
-  devCreditsSub: "Shows the Credits list on the About page (still being finished)",
+  devCreditsSub: "Shows the Credits list on the About page",
 };

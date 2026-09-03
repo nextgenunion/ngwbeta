@@ -1,0 +1,22 @@
+{
+  "id": "e001",
+  "title": "Amazing Grace",
+  "artist": "John Newton",
+  "key": "G",
+  "lyrics": [
+    "[G]Amazing grace, how [G7]sweet the [C]sound, that [G]saved a wretch like [D]me",
+    "I [G]once was lost, but [G7]now am [C]found, was [G]blind but [D]now I [G]see",
+    "",
+    "[G]'Twas grace that [G7]taught my [C]heart to fear, and [G]grace my fears re[D]lieved",
+    "How [G]precious did that [G7]grace ap[C]pear, the [G]hour I [D]first be[G]lieved",
+    "",
+    "Through [G]many dangers, [G7]toils and [C]snares, I [G]have already [D]come",
+    "'Tis [G]grace hath brought me [G7]safe thus [C]far, and [G]grace will [D]lead me [G]home",
+    "",
+    "[G]When we've been [G7]there ten [C]thousand years, bright [G]shining as the [D]sun",
+    "We've [G]no less days to [G7]sing God's [C]praise, than [G]when we [D]first be[G]gun"
+  ],
+  "links": [
+    { "label": "YouTube", "url": "https://www.youtube.com/results?search_query=Amazing+Grace+hymn" }
+  ]
+}

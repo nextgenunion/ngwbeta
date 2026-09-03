@@ -37,7 +37,7 @@ window.SONGBOOK_LANG.kr = {
   sectionLangDb: "언어 및 찬양집",
   dbTitle: "찬양집",
   dbSub: "사용할 찬양집을 선택하세요",
-  dbComingSoon: (name) => `${name} — 준비 중`,
+  dbOptionEnglish: "영어",
   uiLangTitle: "앱 언어",
   uiLangSub: "메뉴와 버튼에 사용할 언어를 선택하세요",
   sectionApp: "앱",
@@ -118,14 +118,21 @@ window.SONGBOOK_LANG.kr = {
   // Songbook page on Saturdays (Sabbath). See initSabbathMascot() in app.js.
   sabbathGreeting: "행복한 안식일 되세요!",
 
-  // Developer options — hidden Settings section unlocked by tapping the
-  // About page's app icon 3 times. See initDevOptions() in app.js.
+  // Developer options — its own dedicated page, reached via a hidden
+  // Settings row unlocked by tapping the About page's app icon 3 times.
+  // See initDevOptions() in app.js.
   toastDevUnlocked: "개발자 옵션이 열렸습니다",
   sectionDevOptions: "개발자 옵션",
-  devEasterEggsTitle: "이스터에그 강제 활성화",
-  devEasterEggsSub: "날짜를 기다리거나 각자의 트리거를 누르지 않고 안식일 마스코트, 크리스마스 눈, 파티 모드를 미리 볼 수 있습니다. 이 옵션을 끄더라도 기능 자체가 비활성화되지는 않습니다 — 각각 원래 방식대로 계속 작동합니다.",
+  sectionDevEasterEggs: "이스터에그",
+  devSabbathTitle: "안식일 마스코트 강제 활성화",
+  devSabbathSub: "금요일 저녁/토요일을 기다리지 않고 미리 볼 수 있습니다. 이 옵션을 끄더라도 비활성화되지 않습니다 — 안식일이 되면 그대로 표시됩니다.",
+  devChristmasTitle: "크리스마스 눈 강제 활성화",
+  devChristmasSub: "12월을 기다리지 않고 미리 볼 수 있습니다. 이 옵션을 끄더라도 비활성화되지 않습니다 — 매년 12월이 되면 그대로 표시됩니다.",
+  devPartyTitle: "파티 모드 강제 활성화",
+  devPartySub: "\"강조 색상\"을 3번 탭하지 않고 미리 볼 수 있습니다. 이 옵션을 끄더라도 비활성화되지 않습니다 — 그 3탭 트리거는 그대로 작동합니다.",
+  sectionDevInProgress: "아직 준비 중",
   devTradMongolianTitle: "전통 몽골 문자",
-  devTradMongolianSub: "위 언어 목록에 세로쓰기 전통 몽골 문자 옵션을 추가합니다 (아직 준비 중)",
+  devTradMongolianSub: "설정의 언어 목록에 세로쓰기 전통 몽골 문자 옵션을 추가합니다",
   devCreditsTitle: "크레딧 표시",
-  devCreditsSub: "정보 페이지에 크레딧 목록을 표시합니다 (아직 준비 중)",
+  devCreditsSub: "정보 페이지에 크레딧 목록을 표시합니다",
 };

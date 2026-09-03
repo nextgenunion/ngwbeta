@@ -5,10 +5,13 @@
 // or redistribution, in whole or in part, without prior written
 // permission from Next Gen Union. See LICENSE for full terms.
 //
-// Data-driven: song content lives as one JSON file per song under
-// /data/songs/ (see data/songs/manifest.json), loaded at runtime by
-// loadSongData(). Adding a song = add a JSON file + one line in the
-// manifest — nothing here needs to change.
+// Data-driven: song content lives as one JSON file per song, one folder
+// per song database under /data/ (see DB_SOURCES further down for the
+// registry of which folder belongs to which source), loaded at runtime
+// by loadAllSongData(). Adding a song = add a JSON file + one line in
+// that source's manifest.json — nothing here needs to change. Adding a
+// whole new database = a new folder + manifest + one DB_SOURCES entry +
+// one <option> in index.html's #db-select.
 // =========================================================
 
 // Sourced from version.js (loaded before this file in index.html) so this
@@ -98,7 +101,16 @@ function markVersionSeen() {
 const state = {
   sources: {
     official: { songs: [], loadFailed: false },
+    english: { songs: [], loadFailed: false },
   },
+  // Which entry in `sources` (and which folder under data/) the Songs
+  // page, search, sort, and the playlist song-picker all currently browse.
+  // Driven by Settings → Song database (see the db-select dropdown/
+  // 'sb-db' in bindSettings and DB_SOURCES below) — not the same thing as
+  // activeSourceKey below, which instead remembers where an *already
+  // open* song came from, since a person can switch databases while a
+  // song from the other one is still open in the song view.
+  activeDbSource: 'official',
   sortBy: 'num',       // 'alpha' | 'num'
   sortOrder: 'asc',     // 'asc' | 'desc'
   query: '',
@@ -115,20 +127,25 @@ const state = {
   activePlaylistId: null,
 
   // ---- Developer options (see initDevOptions()) ----
-  // The section itself only appears after tapping the About page's app
+  // The page itself is only reachable after tapping the About page's app
   // icon 3 times in a row (see bindDevOptionsUnlock()) — devUnlocked isn't
-  // persisted, so the section is hidden again on every fresh load and has
-  // to be re-unlocked, the same as the existing accent-color easter egg.
+  // persisted, so the nav row to it is hidden again on every fresh load
+  // and has to be re-unlocked, the same as the existing accent-color
+  // easter egg.
   devUnlocked: false,
-  // devEasterEggsForced: the one master switch, OFF by default. Turning it
-  // ON force-shows all three easter eggs (Sabbath mascot, Christmas snow,
-  // accent disco/"party mode") regardless of today's date or manual-tap
-  // state. Turning it back OFF does NOT disable them — it just stops
-  // forcing them on, so each one falls back to its own original secret
-  // trigger exactly as before this feature existed: Sabbath/Christmas by
-  // date, party mode by 3 taps on "Accent color". See each easter egg's
-  // isXActive()-style check further down for how this override is read.
-  devEasterEggsForced: false,
+  // devSabbathForced/devChristmasForced/devPartyForced: one switch per
+  // easter egg, each OFF by default. Turning one ON force-shows that
+  // single easter egg (Sabbath mascot / Christmas snow / accent disco
+  // "party mode" respectively) regardless of today's date or manual-tap
+  // state — the other two are untouched. Turning it back OFF does NOT
+  // disable that egg — it just stops forcing it on, so it falls back to
+  // its own original secret trigger exactly as before this feature
+  // existed: Sabbath/Christmas by date, party mode by 3 taps on "Accent
+  // color". See each easter egg's isXActive()-style check further down
+  // for how its own override is read.
+  devSabbathForced: false,
+  devChristmasForced: false,
+  devPartyForced: false,
   devTradMongolian: false, // see refreshLangPicker()
   devCredits: false,       // see renderCredits()
 };
@@ -157,6 +174,11 @@ const PAGES = {
   'playlist-view':  { elId: 'page-playlist-view',  navKey: 'playlists', rememberScroll: false, hideNav: true },
   'settings':       { elId: 'page-settings',       navKey: 'settings',  rememberScroll: true,  onEnter: () => resetContactUI() },
   'about':          { elId: 'page-about',          navKey: 'settings',  rememberScroll: false, hideNav: true },
+  // Only reachable once unlocked (see unlockDevOptions()) — not through
+  // history/deep-linking before that, since showPage() itself doesn't
+  // gate on state.devUnlocked; the About page's row to get here is what's
+  // hidden pre-unlock instead (see index.html).
+  'dev-options':    { elId: 'page-dev-options',    navKey: 'settings',  rememberScroll: false, hideNav: true },
 };
 
 // Pages that open "on top of" another page (a song out of the songbook or
@@ -164,7 +186,7 @@ const PAGES = {
 // being a sibling tab you switch between. These get the slide push/pop
 // transition in showPage(); tab switches (Songs/Playlists/Settings) stay
 // an instant cut, same as before.
-const SLIDE_PAGES = new Set(['song-view', 'playlist-view', 'about']);
+const SLIDE_PAGES = new Set(['song-view', 'playlist-view', 'about', 'dev-options']);
 
 // Remembers each rememberScroll page's scroll position (each .page
 // element's own scrollTop — see the CSS notes on .page for why it's no
@@ -355,7 +377,7 @@ async function init() {
   safe('initDevOptions', initDevOptions);
   requestPersistentStorage(); // fire-and-forget; never block startup on this
 
-  await Promise.all([loadSongData(), loadPlaylists()]);
+  await Promise.all([loadAllSongData(), loadPlaylists()]);
   safe('applyLanguage (post-load)', applyLanguage); // re-run so the results count reflects the loaded songs
 }
 
@@ -378,9 +400,32 @@ async function requestPersistentStorage() {
 }
 
 // ---------------------------------------------------------
-// Song data: one JSON file per song, listed in data/songs/manifest.json.
-// Adding a song = add its JSON file + one line in the manifest; nothing
-// else in the app needs to change.
+// Song databases — each is its own folder under data/, with its own
+// manifest.json listing that folder's song files. Registered here in one
+// place (DB_SOURCES) so adding a future third database (or a next-gen
+// version of this app adding more) is: pick a new key, add a folder +
+// manifest under data/, add one entry below, add one <option> to
+// #db-select in index.html — nothing else in this file needs to change,
+// since every function below reads a source's folder/hasNumbers from this
+// registry rather than assuming 'data/songs/' or that every song has a
+// number.
+//
+//   folder     — the data/ subfolder this source's songs and
+//                manifest.json live in.
+//   hasNumbers — false means this source's songs have no `number` field
+//                (see the English database) — see applySongNumberUI() for
+//                what that changes in the Songs page (hides "Sort by
+//                number" and the number badges) once this source is the
+//                active one.
+// ---------------------------------------------------------
+const DB_SOURCES = {
+  official: { folder: 'mongolian', hasNumbers: true },
+  english:  { folder: 'english',   hasNumbers: false },
+};
+
+// One JSON file per song, listed in <folder>/manifest.json. Adding a song
+// = add its JSON file + one line in that source's manifest; nothing else
+// in the app needs to change.
 //
 // Uses Promise.allSettled rather than Promise.all deliberately: the
 // manifest and the actual files on disk can drift out of sync (a song
@@ -392,14 +437,18 @@ async function requestPersistentStorage() {
 // player) at all. allSettled loads everything that *does* work and just
 // warns about what doesn't, so one bad entry can't take down the rest.
 // ---------------------------------------------------------
-async function fetchSongData({ forceRefresh = false } = {}) {
+async function fetchSongData(sourceKey, { forceRefresh = false } = {}) {
+  const dbSource = DB_SOURCES[sourceKey];
+  if (!dbSource) throw new Error(`unknown song source "${sourceKey}"`);
+  const base = `data/${dbSource.folder}`;
+
   const headers = forceRefresh ? { 'X-Force-Refresh': '1' } : {};
-  const manifestRes = await fetch('data/songs/manifest.json', { headers });
+  const manifestRes = await fetch(`${base}/manifest.json`, { headers });
   if (!manifestRes.ok) throw new Error(`manifest.json responded ${manifestRes.status}`);
   const files = await manifestRes.json();
 
   const results = await Promise.allSettled(files.map(async (file) => {
-    const res = await fetch(`data/songs/${file}`, { headers });
+    const res = await fetch(`${base}/${file}`, { headers });
     if (!res.ok) throw new Error(`${file} responded ${res.status}`);
     return res.json();
   }));
@@ -416,7 +465,7 @@ async function fetchSongData({ forceRefresh = false } = {}) {
   if (songs.length === 0 && files.length > 0) {
     // Every single file failed (e.g. fully offline with no cache yet) —
     // that's the one case that should still surface as a real failure so
-    // loadSongData()'s IndexedDB-backup fallback below kicks in.
+    // loadSongDataFor()'s IndexedDB-backup fallback below kicks in.
     throw new Error('all song files failed to load');
   }
   return songs;
@@ -431,20 +480,22 @@ async function fetchSongData({ forceRefresh = false } = {}) {
 // eviction policy than IndexedDB's) while the network is also unavailable.
 // ---------------------------------------------------------
 const SONGDB_NAME = 'songbook-db';
-// Bumped 1 → 2 to add the 'user-songs' store below (an IndexedDB store can
-// only be created inside onupgradeneeded, which only fires on a version
-// increase). onupgradeneeded is written to only create stores that don't
-// already exist, so this upgrade is additive for already-installed
-// devices — their existing official-songs backup is untouched.
-const SONGDB_VERSION = 2;
-// One object store per song source (see state.sources above), so each
-// source's offline backup lives independently and nothing collides. Only
-// 'official' is written to in Version 1. 'user' is reserved now, unused,
-// so v2's User Songs source can start saving to IndexedDB immediately —
-// no further DB version bump needed when that day comes.
+// Bumped 1 → 2 to add 'user-songs', then 2 → 3 to add 'english-songs'
+// below (an IndexedDB store can only be created inside onupgradeneeded,
+// which only fires on a version increase). onupgradeneeded is written to
+// only create stores that don't already exist, so each of these upgrades
+// is additive for already-installed devices — their existing official-
+// songs backup is untouched.
+const SONGDB_VERSION = 3;
+// One object store per song source (see state.sources/DB_SOURCES above),
+// so each source's offline backup lives independently and nothing
+// collides. 'user' is reserved, unused, so v2's User Songs source can
+// start saving to IndexedDB immediately — no further DB version bump
+// needed when that day comes.
 const SONGDB_STORES = {
   official: 'songs', // kept as 'songs', not renamed to 'official-songs', so
                       // existing installs' offline backup carries over as-is
+  english: 'english-songs',
   user: 'user-songs',
 };
 
@@ -495,22 +546,29 @@ async function loadSongsFromIndexedDb(sourceKey) {
   return songs;
 }
 
-async function loadSongData() {
-  const source = state.sources.official;
+// Loads one source (any key in DB_SOURCES) — network first, falling back
+// to the IndexedDB backup on failure, exactly the same recovery path
+// regardless of which source this is. Called once per registered source
+// at startup (see loadAllSongData() below) rather than assuming there's
+// only ever one.
+async function loadSongDataFor(sourceKey) {
+  const source = state.sources[sourceKey];
   try {
-    source.songs = await fetchSongData();
-    saveSongsToIndexedDb('official', source.songs); // fire-and-forget; don't block on this
+    source.songs = await fetchSongData(sourceKey);
+    saveSongsToIndexedDb(sourceKey, source.songs); // fire-and-forget; don't block on this
+    source.loadFailed = false;
   } catch (err) {
-    console.error('Songbook: failed to load song data over the network —', err);
+    console.error(`Songbook: failed to load "${sourceKey}" song data over the network —`, err);
     try {
-      const backup = await loadSongsFromIndexedDb('official');
+      const backup = await loadSongsFromIndexedDb(sourceKey);
       if (backup && backup.length) {
-        console.warn('Songbook: network/cache load failed — recovered songs from IndexedDB backup.');
+        console.warn(`Songbook: network/cache load failed for "${sourceKey}" — recovered songs from IndexedDB backup.`);
         source.songs = backup;
+        source.loadFailed = false;
         return;
       }
     } catch (dbErr) {
-      console.error('Songbook: IndexedDB backup also unavailable —', dbErr);
+      console.error(`Songbook: IndexedDB backup also unavailable for "${sourceKey}" —`, dbErr);
     }
     // Most likely cause if there's no backup either: the app was opened
     // directly from disk (file://), where browsers block fetch() of local
@@ -523,6 +581,13 @@ async function loadSongData() {
   }
 }
 
+// Loads every registered source (see DB_SOURCES) in parallel at startup.
+// Each source's load is independent — the English database being empty,
+// broken, or slow never blocks or fails the Mongolian one, or vice versa.
+async function loadAllSongData() {
+  await Promise.all(Object.keys(DB_SOURCES).map(loadSongDataFor));
+}
+
 // Manual "Refresh song database" button: asks the service worker to try the
 // network first (see the X-Force-Refresh handling in service-worker.js),
 // falling back to the existing cached copy if that fails — so a refresh
@@ -531,17 +596,21 @@ async function loadSongData() {
 // that's confirmed to have loaded successfully. Unlike the initial load, a
 // failure here also leaves the source's songs alone — no point wiping out songs
 // that were already showing just because this refresh attempt failed.
+// Only refreshes whichever source is currently active in Settings → Song
+// database — not every registered source — since that's the one whose
+// staleness the person is actually looking at and asking to fix.
 async function reloadSongLibrary() {
   const btn = document.getElementById('reload-songs-btn');
   btn.disabled = true;
   btn.textContent = t('reloadBtnBusy');
 
+  const sourceKey = state.activeDbSource;
   try {
-    const songs = await fetchSongData({ forceRefresh: true });
-    const source = state.sources.official;
+    const songs = await fetchSongData(sourceKey, { forceRefresh: true });
+    const source = state.sources[sourceKey];
     source.songs = songs;
     source.loadFailed = false;
-    saveSongsToIndexedDb('official', source.songs);
+    saveSongsToIndexedDb(sourceKey, source.songs);
     renderSongList();
     showToast(navigator.onLine ? t('toastLibraryReloaded') : t('toastLibraryOffline'));
   } catch (err) {
@@ -834,6 +903,13 @@ function loadPrefs() {
 
   state.hideChords = localStorage.getItem('sb-hide-chords') === 'true';
   applyHideChords();
+
+  // Restore which song database was active (see applyDbSource()). Reuses
+  // the 'sb-db' key/values ('mn'/'en') the dbSelect dropdown itself
+  // stores in bindSettings(), so a value saved by an older app version
+  // that only ever wrote 'mn' still resolves correctly to 'official'.
+  const savedDb = localStorage.getItem('sb-db');
+  applyDbSource(savedDb === 'en' ? 'english' : 'official');
 }
 
 function applyFontSizes() {
@@ -865,28 +941,62 @@ function applyHideChords() {
   if (toggle) toggle.setAttribute('aria-checked', String(state.hideChords));
 }
 
+// Switches which song database (see DB_SOURCES) the Songs page, search,
+// and playlist song-picker all browse — called from Settings → Song
+// database's dbSelect (see bindSettings()) and on startup to restore the
+// saved choice.
+//
+// Resets the search query on switch (a query typed against one source's
+// titles/lyrics is unlikely to mean anything in the other, and leaving it
+// behind would just show a confusing "no results"). If the new source has
+// no song numbers (see DB_SOURCES' hasNumbers — the English database),
+// this also hides the "Sort by number" button and snaps sortBy to 'alpha'
+// so the Songs page never gets stuck showing a sort control for a field
+// that doesn't exist; switching to a numbered source later restores it.
+function applyDbSource(sourceKey) {
+  state.activeDbSource = sourceKey;
+  state.query = '';
+  const searchInput = document.getElementById('search-input');
+  if (searchInput) searchInput.value = '';
+
+  const hasNumbers = (DB_SOURCES[sourceKey] || {}).hasNumbers !== false;
+  const numBtn = document.querySelector('.sort-btn[data-sort-by="num"]');
+  const alphaBtn = document.querySelector('.sort-btn[data-sort-by="alpha"]');
+  if (numBtn) numBtn.hidden = !hasNumbers;
+  if (!hasNumbers && state.sortBy === 'num') {
+    state.sortBy = 'alpha';
+    if (numBtn) numBtn.setAttribute('aria-pressed', 'false');
+    if (alphaBtn) alphaBtn.setAttribute('aria-pressed', 'true');
+  }
+
+  renderSongList();
+}
+
 // ---------------------------------------------------------
-// Developer options — a hidden Settings section for a few things that
-// don't belong in front of every visitor: moving playlists between
-// browsers (export/import), and toggles for content that's still being
-// finished (traditional Mongolian script, the About page credits list)
-// or that's just for fun (forcing all three easter eggs on to preview
-// them without waiting for the right date).
+// Developer options — its own dedicated page (#page-dev-options), same
+// shape as the About page, for a few things that don't belong in front of
+// every visitor: moving playlists between browsers (export/import), and
+// toggles for content that's still being finished (traditional Mongolian
+// script, the About page credits list) or that's just for fun (forcing
+// each easter egg on individually to preview it without waiting for the
+// right date or finding its own trigger).
 //
 // Unlocked per-session only (not persisted — see state.devUnlocked) by
 // tapping the About page's app icon 3 times in a row, the same
 // 3-tap-within-800ms pattern as the existing accent-color disco easter
-// egg. Once unlocked, the section itself lives in Settings (below Contact
-// us), not on the About page — see bindDevOptionsUnlock() for the tap
-// trigger and initDevOptions()/applyDevOptions() for the section's own
-// toggles and their effects.
+// egg. Unlocking reveals a nav row in Settings' About section (below
+// Contact us — see #dev-options-nav-row in index.html) that opens this
+// page, the same way #about-nav-row opens the About page itself — see
+// bindDevOptionsUnlock() for the tap trigger and
+// initDevOptions()/applyDevOptions() for the page's own toggles and their
+// effects.
 // ---------------------------------------------------------
 
 function unlockDevOptions() {
   if (state.devUnlocked) return;
   state.devUnlocked = true;
-  const section = document.getElementById('dev-options-section');
-  if (section) section.hidden = false;
+  const navRow = document.getElementById('dev-options-nav-row');
+  if (navRow) navRow.hidden = false;
   showToast(t('toastDevUnlocked'));
 }
 
@@ -911,28 +1021,36 @@ function bindDevOptionsUnlock() {
 // fresh load, same as state.devUnlocked) and again after each toggle's
 // own click handler flips its state field.
 function applyDevOptions() {
-  const eggsToggle = document.getElementById('dev-easter-eggs-toggle');
-  if (eggsToggle) eggsToggle.setAttribute('aria-checked', String(state.devEasterEggsForced));
-  // Turning the master switch off doesn't disable the eggs — it just
-  // stops forcing them on; isSabbathToday()/isChristmasWeek() fall back
-  // to their date checks on their own next read. Only refresh the two
-  // that poll on an interval rather than waiting for their own next
-  // check, so flipping the switch shows an immediate result either way.
+  // Turning one of these three off doesn't disable that easter egg — it
+  // just stops forcing it on; isSabbathToday()/isChristmasWeek() fall
+  // back to their own date checks on their own next read, and party mode
+  // falls back to its own 3-tap trigger (see discoForcedByDevToggle's
+  // comment near startDiscoMode()). Only refresh the two that poll on an
+  // interval rather than waiting for their own next check, so flipping
+  // either switch shows an immediate result either way.
+  const sabbathToggle = document.getElementById('dev-sabbath-toggle');
+  if (sabbathToggle) sabbathToggle.setAttribute('aria-checked', String(state.devSabbathForced));
   const sabbathEl = document.getElementById('sabbath-mascot');
   if (sabbathEl) {
     const show = isSabbathToday();
     sabbathEl.hidden = !show;
     if (show) updateSabbathMascotText();
   }
+
+  const christmasToggle = document.getElementById('dev-christmas-toggle');
+  if (christmasToggle) christmasToggle.setAttribute('aria-checked', String(state.devChristmasForced));
   if (window.__ngwRefreshChristmasSnow) window.__ngwRefreshChristmasSnow();
+
   // Party mode (disco) has no polling loop to refresh — it's a
   // start/stop action, not a continuously-rechecked condition. Only act
   // on an actual state change here, and only take ownership of sessions
   // this same switch started (see discoForcedByDevToggle's comment).
-  if (state.devEasterEggsForced && !discoModeActive) {
+  const partyToggle = document.getElementById('dev-party-toggle');
+  if (partyToggle) partyToggle.setAttribute('aria-checked', String(state.devPartyForced));
+  if (state.devPartyForced && !discoModeActive) {
     discoForcedByDevToggle = true;
     startDiscoMode();
-  } else if (!state.devEasterEggsForced && discoModeActive && discoForcedByDevToggle) {
+  } else if (!state.devPartyForced && discoModeActive && discoForcedByDevToggle) {
     discoForcedByDevToggle = false;
     stopDiscoMode();
   }
@@ -950,8 +1068,21 @@ function applyDevOptions() {
 function initDevOptions() {
   bindDevOptionsUnlock();
 
-  document.getElementById('dev-easter-eggs-toggle').addEventListener('click', () => {
-    state.devEasterEggsForced = !state.devEasterEggsForced;
+  document.getElementById('dev-options-nav-row').addEventListener('click', () => {
+    showPage('dev-options', { pushHistory: true, resetScroll: true });
+  });
+  document.getElementById('dev-options-back-btn').addEventListener('click', () => history.back());
+
+  document.getElementById('dev-sabbath-toggle').addEventListener('click', () => {
+    state.devSabbathForced = !state.devSabbathForced;
+    applyDevOptions();
+  });
+  document.getElementById('dev-christmas-toggle').addEventListener('click', () => {
+    state.devChristmasForced = !state.devChristmasForced;
+    applyDevOptions();
+  });
+  document.getElementById('dev-party-toggle').addEventListener('click', () => {
+    state.devPartyForced = !state.devPartyForced;
     applyDevOptions();
   });
   document.getElementById('dev-trad-mongolian-toggle').addEventListener('click', () => {
@@ -983,6 +1114,11 @@ function applyLanguage() {
     // settingsTitle ("Settings") rather than repeating "About" — the
     // page's own header already says "About" via t-sectionAbout2.
     't-topbarAppName3': 'settingsTitle',
+    // The Developer options page's topbar follows the same pattern as the
+    // About page's (t-topbarAppName3 above) — it sits above the settings
+    // context it was opened from, so it reuses settingsTitle rather than
+    // repeating "Developer options" (already said via t-sectionDevOptions2).
+    't-topbarAppName4': 'settingsTitle',
     't-navSongs': 'navSongs',
     't-navSettings': 'navSettings',
     't-navPlaylists': 'navPlaylists',
@@ -1018,8 +1154,15 @@ function applyLanguage() {
     't-creditsHeading': 'creditsHeading',
     'about-nav-sub': 'aboutNavSub',
     't-sectionDevOptions': 'sectionDevOptions',
-    't-devEasterEggsTitle': 'devEasterEggsTitle',
-    't-devEasterEggsSub': 'devEasterEggsSub',
+    't-sectionDevOptions2': 'sectionDevOptions',
+    't-sectionDevEasterEggs': 'sectionDevEasterEggs',
+    't-devSabbathTitle': 'devSabbathTitle',
+    't-devSabbathSub': 'devSabbathSub',
+    't-devChristmasTitle': 'devChristmasTitle',
+    't-devChristmasSub': 'devChristmasSub',
+    't-devPartyTitle': 'devPartyTitle',
+    't-devPartySub': 'devPartySub',
+    't-sectionDevInProgress': 'sectionDevInProgress',
     't-devTradMongolianTitle': 'devTradMongolianTitle',
     't-devTradMongolianSub': 'devTradMongolianSub',
     't-devCreditsTitle': 'devCreditsTitle',
@@ -1039,7 +1182,7 @@ function applyLanguage() {
   document.querySelector('.sort-btn[data-sort-order="asc"]').textContent = t('sortAsc');
   document.querySelector('.sort-btn[data-sort-order="desc"]').textContent = t('sortDesc');
 
-  document.getElementById('db-option-en').textContent = t('dbComingSoon', 'English');
+  document.getElementById('db-option-en').textContent = t('dbOptionEnglish');
 
   document.getElementById('empty-state').textContent = t('emptyState');
   document.getElementById('about-version-line').textContent = t('versionSub', APP_VERSION);
@@ -1310,7 +1453,7 @@ function matchesQuery(song, q) {
 
   const haystack = [
     song.title,
-    String(song.number),
+    song.number != null ? String(song.number) : '', // some sources' songs have no number — see DB_SOURCES' hasNumbers
     ...(song.alternateTitles || []),
     song.artist || '',
     stripChords(song.lyrics),
@@ -1343,10 +1486,17 @@ function relevanceRank(song, q) {
   return 6;                                                     // everything else (e.g. lyrics)
 }
 
-function sortSongs(list, q) {
+// sourceKey (optional) lets this fall back to alphabetical even if
+// state.sortBy is still 'num' from a previous source that had numbers —
+// e.g. right after switching Settings → Song database from Mongolian to
+// English, before the person has had a chance to notice/change the sort
+// buttons themselves (which applyDbSource() also updates — see there for
+// the other half of this).
+function sortSongs(list, q, sourceKey = state.activeDbSource) {
   const arr = [...list];
   const dir = state.sortOrder === 'desc' ? -1 : 1;
   const query = (q || '').trim();
+  const hasNumbers = (DB_SOURCES[sourceKey] || {}).hasNumbers !== false;
 
   arr.sort((a, b) => {
     if (query) {
@@ -1354,7 +1504,7 @@ function sortSongs(list, q) {
       const rankB = relevanceRank(b, query);
       if (rankA !== rankB) return rankA - rankB;
     }
-    if (state.sortBy === 'num') {
+    if (state.sortBy === 'num' && hasNumbers) {
       return (a.number - b.number) * dir;
     }
     return a.title.localeCompare(b.title) * dir;
@@ -1374,14 +1524,16 @@ function escapeHtml(str) {
   return str.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
-// sourceKey picks which state.sources entry to render (defaults to
-// 'official', the only one that exists in Version 1). listElId/emptyElId/
+// sourceKey picks which state.sources entry to render — defaults to
+// whichever database is active in Settings → Song database
+// (state.activeDbSource), not a hardcoded 'official', so every Songs-page
+// call site below (search, sort, switching databases) automatically
+// tracks that choice with no per-call-site plumbing. listElId/emptyElId/
 // countElId let a future second list page (e.g. User Songs) reuse this
-// same function against its own DOM ids instead of needing its own copy —
-// every v1 call site below uses the defaults, so nothing changes for now.
+// same function against its own DOM ids instead of needing its own copy.
 function renderSongList(opts = {}) {
   const {
-    sourceKey = 'official',
+    sourceKey = state.activeDbSource,
     listElId = 'song-list',
     emptyElId = 'empty-state',
     countElId = 'results-count',
@@ -1399,7 +1551,7 @@ function renderSongList(opts = {}) {
     return;
   }
 
-  const filtered = sortSongs(source.songs.filter(s => matchesQuery(s, state.query)), state.query);
+  const filtered = sortSongs(source.songs.filter(s => matchesQuery(s, state.query)), state.query, sourceKey);
 
   countEl.textContent = filtered.length === source.songs.length
     ? t('resultsAll', filtered.length)
@@ -1408,13 +1560,18 @@ function renderSongList(opts = {}) {
   listEl.innerHTML = '';
   emptyEl.hidden = filtered.length !== 0;
 
+  // Some sources' songs have no `number` field at all (see DB_SOURCES'
+  // hasNumbers) — the badge that normally shows it is dropped instead of
+  // rendering "undefined" for those.
+  const hasNumbers = (DB_SOURCES[sourceKey] || {}).hasNumbers !== false;
+
   const q = state.query;
   filtered.forEach(song => {
     const li = document.createElement('li');
     const row = document.createElement('button');
     row.className = 'song-row';
     row.innerHTML = `
-      <span class="song-badge">${song.number}</span>
+      ${hasNumbers ? `<span class="song-badge">${song.number}</span>` : ''}
       <span class="song-row-text">
         <span class="song-row-title">${highlight(song.title, q)}</span>
         ${song.artist ? `<span class="song-row-sub">${escapeHtml(song.artist)}</span>` : ''}
@@ -1506,12 +1663,21 @@ function fixNativeAudioControlsPaint() {
 }
 
 function openSong(song, opts = {}) {
-  const { pushHistory = true, sourceKey = 'official' } = opts;
+  const { pushHistory = true, sourceKey = state.activeDbSource } = opts;
   state.activeSong = song;
   state.activeSourceKey = sourceKey;
   state.transpose = 0;
 
-  document.getElementById('sv-number').textContent = `#${song.number}`;
+  const numberEl = document.getElementById('sv-number');
+  if (song.number != null) {
+    numberEl.textContent = `#${song.number}`;
+    numberEl.hidden = false;
+  } else {
+    // Some sources' songs have no number (see DB_SOURCES' hasNumbers) —
+    // hide the badge entirely rather than show "#undefined".
+    numberEl.textContent = '';
+    numberEl.hidden = true;
+  }
   document.getElementById('sv-title').textContent = song.title;
 
   const altEl = document.getElementById('sv-alt-title');
@@ -1801,8 +1967,8 @@ function renderLyrics(opts = {}) {
 // user-created playlists. Each playlist just holds a list of song
 // references — {sourceKey, songId} — rather than copies of the song data
 // itself, so a playlist always reflects the current song content and
-// works against any source (state.sources.official today, a future
-// state.sources.user tomorrow) without extra plumbing.
+// works against any source (state.sources.official and state.sources.english
+// today, a future state.sources.user tomorrow) without extra plumbing.
 //
 // Storage: playlists are saved on-device via IndexedDB (primary) with a
 // localStorage mirror as a fallback for browsers/contexts where
@@ -2243,8 +2409,11 @@ function renderPlaylistView() {
 
     const row = document.createElement('button');
     row.className = 'song-row';
+    // Some sources' songs have no number (see DB_SOURCES' hasNumbers) —
+    // drop the badge entirely for those rather than show "undefined".
+    const hasNumbers = (DB_SOURCES[ref.sourceKey] || {}).hasNumbers !== false;
     row.innerHTML = `
-      <span class="song-badge">${song.number}</span>
+      ${hasNumbers ? `<span class="song-badge">${song.number}</span>` : ''}
       <span class="song-row-text">
         <span class="song-row-title">${escapeHtml(song.title)}</span>
         ${song.artist ? `<span class="song-row-sub">${escapeHtml(song.artist)}</span>` : ''}
@@ -2596,17 +2765,19 @@ function openAddSongsModal(playlistId) {
 
   const renderItems = () => {
     const q = input.value.trim().toLowerCase();
-    const songs = sortSongs(state.sources.official.songs.filter(s => matchesQuery(s, q)), q);
+    const sourceKey = state.activeDbSource;
+    const songs = sortSongs(state.sources[sourceKey].songs.filter(s => matchesQuery(s, q)), q, sourceKey);
+    const hasNumbers = (DB_SOURCES[sourceKey] || {}).hasNumbers !== false;
     list.innerHTML = '';
     songs.forEach(song => {
-      const inIt = isSongInPlaylist(playlistId, 'official', song.id);
+      const inIt = isSongInPlaylist(playlistId, sourceKey, song.id);
       const li = document.createElement('li');
       const item = document.createElement('button');
       item.type = 'button';
       item.className = 'checklist-item';
       item.setAttribute('aria-pressed', String(inIt));
       item.innerHTML = `
-        <span class="checklist-badge">${song.number}</span>
+        ${hasNumbers ? `<span class="checklist-badge">${song.number}</span>` : ''}
         <span style="flex:1">
           ${escapeHtml(song.title)}
           ${song.artist ? `<div class="checklist-item-sub">${escapeHtml(song.artist)}</div>` : ''}
@@ -2614,7 +2785,7 @@ function openAddSongsModal(playlistId) {
         <span class="checklist-check"><svg data-icon="check" viewBox="0 0 24 24"></svg></span>
       `;
       item.addEventListener('click', () => {
-        const nowIn = toggleSongInPlaylist(playlistId, 'official', song.id);
+        const nowIn = toggleSongInPlaylist(playlistId, sourceKey, song.id);
         item.setAttribute('aria-pressed', String(nowIn));
         if (state.activeSong && state.activeSong.id === song.id) updateFavoriteButtonUI();
         renderPlaylistView();
@@ -2743,12 +2914,9 @@ function bindSettings() {
   });
 
   const dbSelect = document.getElementById('db-select');
-  // Only 'mn' is a real, selectable option right now (others are coming
-  // soon) — this also corrects a stale value left over from an older
-  // version of the app that allowed picking a different database.
-  dbSelect.value = 'mn';
-  localStorage.setItem('sb-db', 'mn');
+  dbSelect.value = state.activeDbSource === 'english' ? 'en' : 'mn';
   dbSelect.addEventListener('change', () => {
+    applyDbSource(dbSelect.value === 'en' ? 'english' : 'official');
     localStorage.setItem('sb-db', dbSelect.value);
     showToast(t('toastDbSaved'));
   });
@@ -3011,10 +3179,10 @@ function isSabbathToday() {
   // just to preview it. Harmless to leave in; nobody stumbles into it by
   // accident since it takes a deliberate query param.
   if (new URLSearchParams(location.search).get('previewSabbath') === '1') return true;
-  // Developer options → "Easter eggs" master switch: force this on
+  // Developer options → "Force Sabbath mascot on": force this on
   // regardless of the actual day/time. Off by default and does NOT
-  // change the date logic below when off — see state.devEasterEggsForced.
-  if (state.devEasterEggsForced) return true;
+  // change the date logic below when off — see state.devSabbathForced.
+  if (state.devSabbathForced) return true;
   const now = new Date();
   const day = now.getDay(); // Sunday=0 ... Friday=5, Saturday=6
   const minutesOfDay = now.getHours() * 60 + now.getMinutes();
@@ -3060,8 +3228,9 @@ function isChristmasWeek() {
   // Testing hook: ?previewChristmas=1 forces it on regardless of the
   // actual date — same idea as ?previewSabbath=1 above.
   if (new URLSearchParams(location.search).get('previewChristmas') === '1') return true;
-  // Same developer-options override as isSabbathToday() above.
-  if (state.devEasterEggsForced) return true;
+  // Developer options → "Force Christmas snow on": same idea as
+  // isSabbathToday()'s own override above — see state.devChristmasForced.
+  if (state.devChristmasForced) return true;
   const now = new Date();
   const month = now.getMonth(); // 0-indexed: 11 = December, 0 = January
   const date = now.getDate();
@@ -3208,12 +3377,13 @@ let discoModeActive = false;
 let discoInterval = null;
 let discoHue = 0;
 // Tracks *why* disco mode is currently running — set when Developer
-// options' Easter eggs switch turned it on, so turning that switch back
-// off only stops it if it's still the reason disco mode is active. If the
-// person separately 3-tapped "Accent color" (the original secret trigger)
-// either before or after, that manual session is left alone — the dev
-// switch never stops a session it didn't start. See applyDevOptions() and
-// bindAccentDiscoEasterEgg() below for both sides of this handoff.
+// options' "Force party mode on" switch turned it on, so turning that
+// switch back off only stops it if it's still the reason disco mode is
+// active. If the person separately 3-tapped "Accent color" (the original
+// secret trigger) either before or after, that manual session is left
+// alone — the dev switch never stops a session it didn't start. See
+// applyDevOptions() and bindAccentDiscoEasterEgg() below for both sides
+// of this handoff.
 let discoForcedByDevToggle = false;
 
 const DISCO_TICK_MS = 300;

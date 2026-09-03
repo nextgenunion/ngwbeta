@@ -257,7 +257,7 @@
       </div>
       <select id="db-select" class="select-input">
         <option value="mn">Монгол (Official)</option>
-        <option value="en" disabled id="db-option-en"></option>
+        <option value="en" id="db-option-en">English</option>
       </select>
     </div>
   </section>
@@ -305,52 +305,17 @@
         </button>
       </div>
     </div>
-  </section>
-
-  <!-- Hidden until unlocked: tap the About page's app icon 3 times in a
-       row (see bindDevOptionsUnlock() in app.js). Not persisted — hidden
-       again on every fresh load. -->
-  <section class="settings-section" id="dev-options-section" hidden>
-    <h3 class="settings-heading" id="t-sectionDevOptions">Developer options</h3>
-
-    <div class="settings-row">
+    <!-- Hidden until unlocked: tap the About page's app icon 3 times in a
+         row (see bindDevOptionsUnlock() in app.js). Not persisted —
+         hidden again on every fresh load. Opens #page-dev-options, its
+         own dedicated page (see below), same as the About row above it
+         opens #page-about. -->
+    <button type="button" class="settings-row settings-row-nav" id="dev-options-nav-row" hidden>
       <div class="settings-row-text">
-        <span class="settings-row-title" id="t-playlistsBackupTitle">Playlists backup</span>
-        <span class="settings-row-sub" id="t-playlistsBackupSub">Playlists are saved on this device per browser. Export/import a file to move them to another browser on this phone.</span>
+        <span class="settings-row-title" id="t-sectionDevOptions">Developer options</span>
       </div>
-      <div class="settings-row-actions">
-        <button id="export-playlists-btn" class="btn-secondary" type="button"></button>
-        <button id="import-playlists-btn" class="btn-secondary" type="button"></button>
-        <input type="file" id="import-playlists-file" accept="application/json" hidden>
-      </div>
-    </div>
-    <div class="settings-row">
-      <div class="settings-row-text">
-        <span class="settings-row-title" id="t-devEasterEggsTitle">Force easter eggs on</span>
-        <span class="settings-row-sub" id="t-devEasterEggsSub">Preview the Sabbath mascot, Christmas snow, and party mode without waiting for their date or tapping their own trigger. Turning this off doesn't disable them — each still works its own original way.</span>
-      </div>
-      <button id="dev-easter-eggs-toggle" class="switch" role="switch" aria-checked="false" aria-label="Force easter eggs on">
-        <span class="switch-knob"></span>
-      </button>
-    </div>
-    <div class="settings-row">
-      <div class="settings-row-text">
-        <span class="settings-row-title" id="t-devTradMongolianTitle">Traditional Mongolian script</span>
-        <span class="settings-row-sub" id="t-devTradMongolianSub">Adds the vertical traditional-script option to the language list above (still being finished)</span>
-      </div>
-      <button id="dev-trad-mongolian-toggle" class="switch" role="switch" aria-checked="false" aria-label="Traditional Mongolian script">
-        <span class="switch-knob"></span>
-      </button>
-    </div>
-    <div class="settings-row">
-      <div class="settings-row-text">
-        <span class="settings-row-title" id="t-devCreditsTitle">Show credits</span>
-        <span class="settings-row-sub" id="t-devCreditsSub">Shows the Credits list on the About page (still being finished)</span>
-      </div>
-      <button id="dev-credits-toggle" class="switch" role="switch" aria-checked="false" aria-label="Show credits">
-        <span class="switch-knob"></span>
-      </button>
-    </div>
+      <svg class="settings-row-chevron" data-icon="back-arrow" viewBox="0 0 24 24"></svg>
+    </button>
   </section>
 
   <blockquote class="scripture-footer">
@@ -394,6 +359,94 @@
    <p class="about-copyright" id="about-copyright"></p>
    <p class="about-copyright-terms" id="about-copyright-terms"></p>
  </footer>
+</main>
+
+<!-- ===== DEVELOPER OPTIONS PAGE ===== -->
+<!-- Same shape as #page-about (topbar + header + settings rows), just its
+     own screen instead of an inline Settings section — reached only via
+     #dev-options-nav-row above (which itself is hidden until unlocked). -->
+<main id="page-dev-options" class="page" data-page="dev-options" hidden>
+ <div class="page-inner">
+  <div class="song-view-topbar">
+    <span id="t-topbarAppName4">Тохиргоо</span>
+  </div>
+
+  <header class="song-view-header pv-header">
+    <button id="dev-options-back-btn" class="icon-btn" aria-label="Back to settings">
+      <svg data-icon="back-arrow" viewBox="0 0 24 24"></svg>
+    </button>
+    <div class="song-view-title">
+      <h2 id="t-sectionDevOptions2">Developer options</h2>
+    </div>
+  </header>
+
+  <section class="settings-section">
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-playlistsBackupTitle">Playlists backup</span>
+        <span class="settings-row-sub" id="t-playlistsBackupSub">Playlists are saved on this device per browser. Export/import a file to move them to another browser on this phone.</span>
+      </div>
+      <div class="settings-row-actions">
+        <button id="export-playlists-btn" class="btn-secondary" type="button"></button>
+        <button id="import-playlists-btn" class="btn-secondary" type="button"></button>
+        <input type="file" id="import-playlists-file" accept="application/json" hidden>
+      </div>
+    </div>
+  </section>
+
+  <section class="settings-section">
+    <h3 class="settings-heading" id="t-sectionDevEasterEggs">Easter eggs</h3>
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-devSabbathTitle">Force Sabbath mascot on</span>
+        <span class="settings-row-sub" id="t-devSabbathSub">Preview it without waiting for Friday evening/Saturday. Turning this off doesn't disable it — it still shows on its own on Sabbath.</span>
+      </div>
+      <button id="dev-sabbath-toggle" class="switch" role="switch" aria-checked="false" aria-label="Force Sabbath mascot on">
+        <span class="switch-knob"></span>
+      </button>
+    </div>
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-devChristmasTitle">Force Christmas snow on</span>
+        <span class="settings-row-sub" id="t-devChristmasSub">Preview it without waiting for December. Turning this off doesn't disable it — it still shows on its own each December.</span>
+      </div>
+      <button id="dev-christmas-toggle" class="switch" role="switch" aria-checked="false" aria-label="Force Christmas snow on">
+        <span class="switch-knob"></span>
+      </button>
+    </div>
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-devPartyTitle">Force party mode on</span>
+        <span class="settings-row-sub" id="t-devPartySub">Preview it without tapping "Accent color" 3 times. Turning this off doesn't disable it — that 3-tap trigger still works on its own.</span>
+      </div>
+      <button id="dev-party-toggle" class="switch" role="switch" aria-checked="false" aria-label="Force party mode on">
+        <span class="switch-knob"></span>
+      </button>
+    </div>
+  </section>
+
+  <section class="settings-section">
+    <h3 class="settings-heading" id="t-sectionDevInProgress">Still being finished</h3>
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-devTradMongolianTitle">Traditional Mongolian script</span>
+        <span class="settings-row-sub" id="t-devTradMongolianSub">Adds the vertical traditional-script option to the language list in Settings</span>
+      </div>
+      <button id="dev-trad-mongolian-toggle" class="switch" role="switch" aria-checked="false" aria-label="Traditional Mongolian script">
+        <span class="switch-knob"></span>
+      </button>
+    </div>
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-devCreditsTitle">Show credits</span>
+        <span class="settings-row-sub" id="t-devCreditsSub">Shows the Credits list on the About page</span>
+      </div>
+      <button id="dev-credits-toggle" class="switch" role="switch" aria-checked="false" aria-label="Show credits">
+        <span class="switch-knob"></span>
+      </button>
+    </div>
+  </section>
+ </div>
 </main>
 
 

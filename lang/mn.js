@@ -37,7 +37,7 @@ window.SONGBOOK_LANG.mn = {
   sectionLangDb: "Хэл ба дууны сан",
   dbTitle: "Дууны сан",
   dbSub: "Ямар дууны сангаас ашиглахаа сонгоно уу",
-  dbComingSoon: (name) => `${name} — тун удахгүй`,
+  dbOptionEnglish: "Англи",
   uiLangTitle: "Аппын хэл",
   uiLangSub: "Цэс, товчлуурын хэлийг сонгоно уу",
   sectionApp: "Апп",
@@ -118,14 +118,21 @@ window.SONGBOOK_LANG.mn = {
   // Songbook page on Saturdays (Sabbath). See initSabbathMascot() in app.js.
   sabbathGreeting: "Шаббатын мэнд",
 
-  // Developer options — hidden Settings section unlocked by tapping the
-  // About page's app icon 3 times. See initDevOptions() in app.js.
+  // Developer options — its own dedicated page, reached via a hidden
+  // Settings row unlocked by tapping the About page's app icon 3 times.
+  // See initDevOptions() in app.js.
   toastDevUnlocked: "Хөгжүүлэгчийн тохиргоо нээгдлээ",
   sectionDevOptions: "Хөгжүүлэгчийн тохиргоо",
-  devEasterEggsTitle: "Далд онцлогуудыг заавал асаах",
-  devEasterEggsSub: "Шаббатын дүрс, Христийн Мэндэлсний Баярын цас, найр наадмын горимыг өдөр хүлээхгүйгээр, өөрийн товчлуурыг дарахгүйгээр урьдчилан үзэх боломжтой. Үүнийг унтраасан ч далд онцлогууд ажиллахгүй болохгүй — тэд өөрсдийн жинхэнэ аргаараа л ажиллана.",
+  sectionDevEasterEggs: "Далд онцлогууд",
+  devSabbathTitle: "Шаббатын дүрсийг заавал асаах",
+  devSabbathSub: "Баасан гарагийн орой/Бямба гарагийг хүлээхгүйгээр урьдчилан үзэх боломжтой. Үүнийг унтраасан ч ажиллахгүй болохгүй — Шаббатын өдөр өөрөө гарч ирнэ.",
+  devChristmasTitle: "Христийн Мэндэлсний Баярын цасыг заавал асаах",
+  devChristmasSub: "12-р сарыг хүлээхгүйгээр урьдчилан үзэх боломжтой. Үүнийг унтраасан ч ажиллахгүй болохгүй — жил бүрийн 12-р сард өөрөө гарч ирнэ.",
+  devPartyTitle: "Найр наадмын горимыг заавал асаах",
+  devPartySub: "\"Өнгөний тохиргоо\" дээр 3 удаа дарахгүйгээр урьдчилан үзэх боломжтой. Үүнийг унтраасан ч ажиллахгүй болохгүй — тэр 3 товшилт өөрөө ажиллана.",
+  sectionDevInProgress: "Одоогоор бэлтгэгдэж байгаа",
   devTradMongolianTitle: "Монгол бичиг",
-  devTradMongolianSub: "Дээрх хэлний жагсаалтад уламжлалт монгол бичгийн сонголтыг нэмнэ (одоогоор бэлтгэгдэж байна)",
+  devTradMongolianSub: "Тохиргоо доторх хэлний жагсаалтад уламжлалт монгол бичгийн сонголтыг нэмнэ",
   devCreditsTitle: "Оролцогсдыг харуулах",
-  devCreditsSub: "Хамтран Ажилласан хуудсанд Оролцсон хэсгийг харуулна (одоогоор бэлтгэгдэж байна)",
+  devCreditsSub: "Хамтран Ажилласан хуудсанд Оролцсон хэсгийг харуулна",
 };

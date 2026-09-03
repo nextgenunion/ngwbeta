@@ -1,4 +1,4 @@
-# Next Gen Worship — Worship Song App (v2.3.0-beta — Playlists, Favorites, Chord Visibility, Hide Chords, Developer Options)
+# Next Gen Worship — Worship Song App (v2.4.0-beta — Playlists, Favorites, Chord Visibility, Hide Chords, Developer Options, English Song Database)
 
 An offline-first worship songbook PWA. Static HTML/CSS/JS, no build step, no
 backend — built to run on GitHub Pages and install like a native app.
@@ -48,22 +48,24 @@ and Sheet Music are still ahead — see "Built for what's next", below.
   purpose, reused by the About page too) and `app-icon-maskable.png`
   (`maskable` purpose). See "Replacing an icon" below for what the
   `maskable` file still needs (safe-zone padding) before it's fully correct
-- **Developer options** — a hidden Settings section (below Contact us),
-  unlocked by tapping the About page's app icon 3 times in a row within
-  0.8s. Not persisted — hidden again on every fresh load, same as the
-  existing accent-color disco easter egg's own tap state. Contains:
+- **Developer options** — its own dedicated page (reached via a hidden
+  row in Settings → About, below Contact us), unlocked by tapping the
+  About page's app icon 3 times in a row within 0.8s. Not persisted —
+  hidden again on every fresh load, same as the existing accent-color
+  disco easter egg's own tap state. Contains:
   - **Playlists backup** (Export/Import) — moved here from its previous
     always-visible spot in Settings → App
-  - **Force easter eggs on** — a single switch that force-shows all three
-    easter eggs (Sabbath mascot, Christmas snow, party mode/accent disco)
-    for previewing without waiting for the right date or finding each
-    one's own trigger. Turning it off does **not** disable any of them —
-    each falls straight back to its own original secret method exactly as
-    before this feature existed (Sabbath/Christmas by date, party mode by
-    3 taps on "Accent color" in Settings). A party-mode session started
-    manually via that 3-tap is never interrupted by this switch turning
-    off, and vice versa — whichever one started a session is the only one
-    that can stop it
+  - **Three separate "Force ... on" switches** — one each for the Sabbath
+    mascot, Christmas snow, and party mode/accent disco — for previewing
+    any one of them individually without waiting for the right date or
+    finding its own trigger. Turning one off does **not** disable that
+    egg — it falls straight back to its own original secret method
+    exactly as before this feature existed (Sabbath/Christmas by date,
+    party mode by 3 taps on "Accent color" in Settings), and the other
+    two switches are unaffected. A party-mode session started manually
+    via that 3-tap is never interrupted by its switch turning off, and
+    vice versa — whichever one started a session is the only one that
+    can stop it
   - **Traditional Mongolian script** — reveals the vertical traditional
     Mongolian-script language option (`lang/mn2.js`, still being
     finished) in the language picker. The script file now always loads
@@ -79,6 +81,22 @@ and Sheet Music are still ahead — see "Built for what's next", below.
   controls remain
 - Lyrics now render at font-weight 450 (previously 400) — a touch heavier
   for readability, short of full Medium (500)
+- **English song database** — off by default; enable it from Settings →
+  Song database (the option was previously present but disabled). Seeded
+  with 6 public-domain English hymns (Amazing Grace, Blessed Assurance, It
+  Is Well with My Soul, Standing on the Promises, When We All Get to
+  Heaven, Nearer My God to Thee) with full chord charts. Unlike the
+  Mongolian database, English songs have no song number — the number
+  badge and "Sort by number" are hidden automatically whenever this
+  source is active, falling back to alphabetical sort
+- **Song data is now organized per-database**: each database is its own
+  folder under `data/` (`data/mongolian/`, `data/english/`) with its own
+  `manifest.json`, registered in one place (`DB_SOURCES` in `app.js`).
+  Adding a future third database is: new folder + manifest + one
+  `DB_SOURCES` entry + one `<option>` in `index.html` — nothing else
+  needs to change. The Mongolian database's folder was renamed from
+  `data/songs/` to `data/mongolian/` as part of this — the manifest and
+  every song file inside it are otherwise untouched
 
 ## What's in this version (carried over from v1)
 
@@ -134,7 +152,9 @@ css/style.css        Design tokens + styles (light & dark themes)
 js/app.js            All app logic: search, sort, transpose, language switching, install
 app.js               Mirror of js/app.js — not loaded by index.html; kept in
                      sync as a convenience copy at the repo root
-data/songs/           One JSON file per song + manifest.json listing them
+data/                One folder per song database, each with its own JSON
+                     files + manifest.json (data/mongolian/, data/english/
+                     — see DB_SOURCES in js/app.js for the registry)
 lang/*.js         Interface text — one file per language (config.js + eng.js/mn.js/kr.js)
 manifest.json         PWA manifest
 service-worker.js     Offline caching (cache-first w/ background refresh)
@@ -145,12 +165,45 @@ icons/                App icons, logos, and icons/svg/ — one SVG file per UI i
 `js/app.js` and copy the same change into the root `app.js` (or just remove
 the root copy if it isn't needed; it's not referenced anywhere).
 
+## Multiple song databases
+
+Each song database is its own folder under `data/` — `data/mongolian/`
+(the default, official database) and `data/english/` (off by default; see
+"Developer options" above for how to enable it). Every database has the
+same shape: one JSON file per song plus that folder's own
+`manifest.json` listing them (see "Why song data moved to one JSON file
+per song" below for that part's own reasoning).
+
+The folders are registered in one place, `DB_SOURCES` in `js/app.js`:
+
+```js
+const DB_SOURCES = {
+  official: { folder: 'mongolian', hasNumbers: true },
+  english:  { folder: 'english',   hasNumbers: false },
+};
+```
+
+Adding a third database (a next-gen version of this app, a different
+language, a different congregation's songbook) is: create the folder +
+its `manifest.json` + song files, add one entry here, add one `<option>`
+to `#db-select` in `index.html` — nothing else in the app needs to
+change. Every function that loads or displays song data reads a
+database's folder and `hasNumbers` from this registry rather than
+assuming a fixed path or that every song has a number.
+
+`hasNumbers: false` (as set for the English database) means that
+database's songs have no `number` field at all — the app hides the
+number badge next to each song and the "Sort by number" button whenever
+that database is the active one, falling back to alphabetical sort
+instead. Set it to `true` for a database whose songs do have numbers.
+
 ## Why song data moved to one JSON file per song
 
-Each song is its own file under `data/songs/` (e.g. `s001.json`), listed in
-`data/songs/manifest.json`. This makes adding, editing, or handing off a
-single song trivial — no more scrolling a 2,000-line file to find one song,
-and version-control diffs stay small and readable.
+Each song is its own file under its database's folder (e.g.
+`data/mongolian/s001.json`), listed in that folder's own `manifest.json`.
+This makes adding, editing, or handing off a single song trivial — no
+more scrolling a 2,000-line file to find one song, and version-control
+diffs stay small and readable.
 
 **Trade-off:** this loads the data with `fetch()`, which browsers block when
 a page is opened directly from disk (`file://…/index.html`) — the exact
@@ -234,10 +287,12 @@ and all — it's never cropped, so there's no safe-zone constraint on it.
 
 ## Editing the song list
 
-To add a song: create `data/songs/sNNN.json` (copy an existing one as a
-template) and add its filename to `data/songs/manifest.json`. To edit a
-song: open its file directly. Nothing in `js/app.js` needs to change either
-way — the manifest is the only "index" the app needs.
+To add a song: create `data/<folder>/sNNN.json` (copy an existing one as a
+template — `<folder>` is `mongolian` or `english`, or a folder you've
+registered in `DB_SOURCES`, see "Multiple song databases" above) and add
+its filename to that folder's own `manifest.json`. To edit a song: open
+its file directly. Nothing in `js/app.js` needs to change either way —
+each database's manifest is the only "index" the app needs for it.
 
 Chords are written inline in the lyric line using square brackets right
 before the syllable they land on:
@@ -254,7 +309,11 @@ the `lyrics` array creates a blank line (verse/chorus break).
 Fields match the planning doc's data structure: `id`, `number`, `title`,
 `alternateTitles`, `artist`, `key`, `lyrics`, `labels`, `metadata`, `audio`,
 `sheetMusic`. `audio` and `sheetMusic` are wired into the data model now so
-later versions can light them up without a schema change.
+later versions can light them up without a schema change. `number` is
+optional — a database registered with `hasNumbers: false` (see "Multiple
+song databases" above) can omit it entirely; the app hides the number
+badge and "Sort by number" automatically for that database rather than
+expecting every song everywhere to have one.
 
 ## Interface language (Mongolian / English)
 

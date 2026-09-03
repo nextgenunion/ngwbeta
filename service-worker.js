@@ -135,18 +135,26 @@ self.addEventListener('activate', (event) => {
   precacheEverythingElseInBackground();
 });
 
+// One entry per song database (see DB_SOURCES in app.js — kept in sync
+// with it manually, since a service worker can't just import app.js's
+// module-scoped const). Adding a new database here is the same one-line
+// addition as adding it to DB_SOURCES.
+const SONG_DB_FOLDERS = ['mongolian', 'english'];
+
 function precacheEverythingElseInBackground() {
   caches.open(CACHE_VERSION).then((cache) => {
     cacheBestEffort(cache, BEST_EFFORT_ASSETS);
-    fetch('./data/songs/manifest.json')
-      .then((res) => res.json())
-      .then((songFiles) => {
-        const songUrls = songFiles.map((f) => `./data/songs/${f}`);
-        return cacheBestEffort(cache, ['./data/songs/manifest.json', ...songUrls]);
-      })
-      .catch((err) => {
-        console.warn('Songbook SW: background song precache skipped —', err);
-      });
+    SONG_DB_FOLDERS.forEach((folder) => {
+      fetch(`./data/${folder}/manifest.json`)
+        .then((res) => res.json())
+        .then((songFiles) => {
+          const songUrls = songFiles.map((f) => `./data/${folder}/${f}`);
+          return cacheBestEffort(cache, [`./data/${folder}/manifest.json`, ...songUrls]);
+        })
+        .catch((err) => {
+          console.warn(`Songbook SW: background song precache skipped for "${folder}" —`, err);
+        });
+    });
   });
 }
 
@@ -195,7 +203,7 @@ self.addEventListener('fetch', (event) => {
           // survives even if this main cache is empty or was just wiped).
           // Any other kind of request (a script, an image, song data)
           // just fails as before; the app's own code already handles
-          // those (e.g. loadSongData()'s IndexedDB fallback).
+          // those (e.g. loadSongDataFor()'s IndexedDB fallback).
           const isNavigation = event.request.mode === 'navigate'
             || event.request.destination === 'document';
           // Read from OFFLINE_CACHE specifically (not a plain caches.match,

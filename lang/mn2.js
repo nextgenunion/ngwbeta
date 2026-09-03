@@ -40,7 +40,7 @@ window.SONGBOOK_LANG.mn2 = {
   sectionLangDb: "ᢈᠡᠯᠡ ᠪᠠ ᠳᠠᠭᠤᠨ ᠤ᠋ ᠰᠠᠩ",
   dbTitle: "ᠳᠠᠭᠤᠨ ᠤ᠋ ᠰᠠᠩ",
   dbSub: "ᠶᠠᠮᠠᠷ ᠳᠠᠭᠤᠨ ᠤ᠋ ᠰᠠᠩ ᠠ᠋ᠴᠠ ᠠᠰᠢᠭᠯᠠᠬᠤ ᠪᠠᠨ ᠰᠣᠩᠭᠤᠨ᠎ᠠ ᠤᠤ",
-  dbComingSoon: (name) => `${name} — тун удахгүй`,
+  dbOptionEnglish: "Англи",
   uiLangTitle: "ᢈᠡᠯᠡ",
   uiLangSub: "ᠼᠧᠰᠧ᠂ ᠲᠣᠪᠴᠢᠯᠠᠭᠤᠷ ᠤ᠋ᠨ ᢈᠡᠯᠡ ᠶ᠋ᠢ ᠰᠣᠩᠭᠤᠨ᠎ᠠ ᠤᠤ",
   sectionApp: "ᠠᠫᠫ",
@@ -124,16 +124,23 @@ window.SONGBOOK_LANG.mn2 = {
   // Falls back to Cyrillic like a few other entries in this file.
   sabbathGreeting: "Шаббатын мэнд",
 
-  // Developer options — hidden Settings section unlocked by tapping the
-  // About page's app icon 3 times. See initDevOptions() in app.js. Falls
-  // back to Cyrillic like the other entries above that haven't been
-  // transliterated into traditional script yet.
+  // Developer options — its own dedicated page, reached via a hidden
+  // Settings row unlocked by tapping the About page's app icon 3 times.
+  // See initDevOptions() in app.js. Falls back to Cyrillic like the other
+  // entries above that haven't been transliterated into traditional
+  // script yet.
   toastDevUnlocked: "Хөгжүүлэгчийн тохиргоо нээгдлээ",
   sectionDevOptions: "Хөгжүүлэгчийн тохиргоо",
-  devEasterEggsTitle: "Далд онцлогуудыг заавал асаах",
-  devEasterEggsSub: "Шаббатын дүрс, Христийн Мэндэлсний Баярын цас, найр наадмын горимыг өдөр хүлээхгүйгээр, өөрийн товчлуурыг дарахгүйгээр урьдчилан үзэх боломжтой. Үүнийг унтраасан ч далд онцлогууд ажиллахгүй болохгүй — тэд өөрсдийн жинхэнэ аргаараа л ажиллана.",
+  sectionDevEasterEggs: "Далд онцлогууд",
+  devSabbathTitle: "Шаббатын дүрсийг заавал асаах",
+  devSabbathSub: "Баасан гарагийн орой/Бямба гарагийг хүлээхгүйгээр урьдчилан үзэх боломжтой. Үүнийг унтраасан ч ажиллахгүй болохгүй — Шаббатын өдөр өөрөө гарч ирнэ.",
+  devChristmasTitle: "Христийн Мэндэлсний Баярын цасыг заавал асаах",
+  devChristmasSub: "12-р сарыг хүлээхгүйгээр урьдчилан үзэх боломжтой. Үүнийг унтраасан ч ажиллахгүй болохгүй — жил бүрийн 12-р сард өөрөө гарч ирнэ.",
+  devPartyTitle: "Найр наадмын горимыг заавал асаах",
+  devPartySub: "\"Өнгөний тохиргоо\" дээр 3 удаа дарахгүйгээр урьдчилан үзэх боломжтой. Үүнийг унтраасан ч ажиллахгүй болохгүй — тэр 3 товшилт өөрөө ажиллана.",
+  sectionDevInProgress: "Одоогоор бэлтгэгдэж байгаа",
   devTradMongolianTitle: "Монгол бичиг",
-  devTradMongolianSub: "Дээрх хэлний жагсаалтад уламжлалт монгол бичгийн сонголтыг нэмнэ (одоогоор бэлтгэгдэж байна)",
+  devTradMongolianSub: "Тохиргоо доторх хэлний жагсаалтад уламжлалт монгол бичгийн сонголтыг нэмнэ",
   devCreditsTitle: "Оролцогсдыг харуулах",
-  devCreditsSub: "Хамтран Ажилласан хуудсанд Оролцсон хэсгийг харуулна (одоогоор бэлтгэгдэж байна)",
+  devCreditsSub: "Хамтран Ажилласан хуудсанд Оролцсон хэсгийг харуулна",
 };
