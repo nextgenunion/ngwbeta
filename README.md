@@ -1,4 +1,4 @@
-# Next Gen Worship — Worship Song App (v2.2.1-beta — Playlists, Favorites, Chord Visibility, Hide Chords)
+# Next Gen Worship — Worship Song App (v2.3.0-beta — Playlists, Favorites, Chord Visibility, Hide Chords, Developer Options)
 
 An offline-first worship songbook PWA. Static HTML/CSS/JS, no build step, no
 backend — built to run on GitHub Pages and install like a native app.
@@ -38,6 +38,47 @@ and Sheet Music are still ahead — see "Built for what's next", below.
 - Eased the lyrics card's horizontal padding back up slightly — a
   previous pass had tightened it more than intended chasing width for
   long lyric lines
+- Fixed Hide chords leaving lines that originally had chords looking
+  cramped — they now pick up the same comfortable line spacing that
+  chordless lines already used
+- Consolidated the app icon files: `app-icon-192.png`, `app-icon-512.png`,
+  `app-icon-maskable-192.png`, `app-icon-maskable-512.png`, and
+  `about-logo.png` were five byte-identical copies of the same image (none
+  actually sized for their filename) — now just `app-icon.png` (`any`
+  purpose, reused by the About page too) and `app-icon-maskable.png`
+  (`maskable` purpose). See "Replacing an icon" below for what the
+  `maskable` file still needs (safe-zone padding) before it's fully correct
+- **Developer options** — a hidden Settings section (below Contact us),
+  unlocked by tapping the About page's app icon 3 times in a row within
+  0.8s. Not persisted — hidden again on every fresh load, same as the
+  existing accent-color disco easter egg's own tap state. Contains:
+  - **Playlists backup** (Export/Import) — moved here from its previous
+    always-visible spot in Settings → App
+  - **Force easter eggs on** — a single switch that force-shows all three
+    easter eggs (Sabbath mascot, Christmas snow, party mode/accent disco)
+    for previewing without waiting for the right date or finding each
+    one's own trigger. Turning it off does **not** disable any of them —
+    each falls straight back to its own original secret method exactly as
+    before this feature existed (Sabbath/Christmas by date, party mode by
+    3 taps on "Accent color" in Settings). A party-mode session started
+    manually via that 3-tap is never interrupted by this switch turning
+    off, and vice versa — whichever one started a session is the only one
+    that can stop it
+  - **Traditional Mongolian script** — reveals the vertical traditional
+    Mongolian-script language option (`lang/mn2.js`, still being
+    finished) in the language picker. The script file now always loads
+    (previously commented out in `index.html`) so its data is ready
+    instantly when this is switched on; it's filtered back out of the
+    picker when switched off, falling back to the default language if it
+    was the active choice
+  - **Show credits** — shows the About page's Credits section at runtime
+    without editing `config.js`'s `creditsEnabled` flag directly; either
+    one being on is enough to show it
+- Removed the (previously hidden/disabled) per-track audio download link
+  on song pages — it wasn't planned to ship as-is; the `<audio>` player
+  controls remain
+- Lyrics now render at font-weight 450 (previously 400) — a touch heavier
+  for readability, short of full Medium (500)
 
 ## What's in this version (carried over from v1)
 
@@ -127,10 +168,69 @@ back arrow, contact envelope, social icons, etc — names are descriptive, e.g.
 `nav-songs-bookmark.svg`). To swap one out, just replace that file's content
 with a different SVG — the app fetches and injects each icon at runtime, so
 no code changes are needed, and a replacement with a different `viewBox`
-still renders correctly. The splash-screen and about-page logos
-(`icons/splash-logo.png`, `icons/about-logo.png`) are separate PNGs and can
-be swapped the same simple way — the splash logo in particular is shown at
-its own aspect ratio, never stretched, whatever size image you give it.
+still renders correctly.
+
+The splash-screen logo (`icons/splash-logo.png`) is a separate PNG and can be
+swapped the same simple way — it's shown at its own aspect ratio, never
+stretched, whatever size image you give it.
+
+### App icon: `app-icon.png` vs `app-icon-maskable.png`
+
+The home-screen/browser-tab icon is deliberately just **two** files, not one
+per size — every platform that installs this app accepts a single large
+source image per `manifest.json` icon entry and scales it down itself, so
+there's no real benefit to pre-shrunk 192px/512px copies (an earlier version
+of this app shipped four separate files here — `app-icon-192.png`,
+`app-icon-512.png`, and maskable copies of each — but all four were, in
+practice, byte-for-byte the same image; the 192/512 filenames didn't reflect
+actual different sizes). The About page also reuses `app-icon.png` directly
+rather than keeping its own separate copy.
+
+The two files that remain are genuinely different **purposes**, not sizes,
+per the [W3C manifest icon spec](https://www.w3.org/TR/appmanifest/#purpose-member):
+
+- **`icons/app-icon.png`** — `purpose: "any"`. Shown as-is: browser tab
+  favicon, iOS home-screen icon, Windows/desktop install icon. Safe to use
+  full-bleed artwork that runs to every edge (this is the one with the
+  diagonal "BETA" ribbon in the top-left corner).
+- **`icons/app-icon-maskable.png`** — `purpose: "maskable"`. On Android and
+  some desktop launchers, the OS itself crops this into a circle, squircle,
+  or rounded square — it does **not** render as a plain square the way `any`
+  does. Anything sitting outside the center ~80% "safe zone" (roughly the
+  outer 10% margin on every side) can get clipped by that crop, including
+  corner content like a ribbon.
+
+**Current state:** both files are the same placeholder image today —
+`app-icon-maskable.png` has *not* been given real safe-zone padding, so the
+BETA ribbon and the edges of the book icon may get cropped on Android
+launchers that mask it. That's a known, accepted tradeoff for now, not a
+bug — a properly-padded maskable version is expected to replace it later
+(see export settings below).
+
+**To export a new `app-icon-maskable.png` (e.g. from Photoshop):**
+
+1. Design on a **960×958 canvas** (matches the current source's exact
+   pixel size — any square-ish size works, but keep the same aspect ratio
+   `app-icon.png` uses so neither file looks stretched relative to the
+   other).
+2. Have the **background fill the entire canvas edge-to-edge** — no
+   transparency and no hard-edged border, since the OS crops this file's
+   *edges* away and a transparent or mismatched edge will show as a colored
+   ring or gap once cropped.
+3. Keep the **logo content (book, cross, note glyph, ribbon, or whatever
+   else you keep) inside the center ~80%** of the canvas — leave roughly a
+   10% margin on all four sides empty (or background-only). That margin is
+   what gets cropped away on circular/squircle masks; anything you want to
+   survive the crop needs to sit inside it.
+4. Export as **PNG, RGB or RGBA, no compression artifacts** (Photoshop:
+   File → Export → Export As → PNG; "Smaller File (8-bit)" is fine since
+   this source has no fine gradients that need 24-bit, but 24-bit PNG also
+   works and is a safe default if unsure).
+5. Save it as `icons/app-icon-maskable.png`, replacing the placeholder —
+   same filename, so nothing else in the app needs to change.
+
+`icons/app-icon.png` (the `any`-purpose file) can stay full-bleed, ribbon
+and all — it's never cropped, so there's no safe-zone constraint on it.
 
 ## Editing the song list
 

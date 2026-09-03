@@ -34,7 +34,6 @@ window.SONGBOOK_LANG.mn = {
   accentTitle: "Өнгөний загвар",
   accentSub: "Аппын өнгөний загварыг сонгоно уу",
   listenLink: "Сонсох",
-  downloadAudio: "Татаж авах",
   sectionLangDb: "Хэл ба дууны сан",
   dbTitle: "Дууны сан",
   dbSub: "Ямар дууны сангаас ашиглахаа сонгоно уу",
@@ -118,4 +117,15 @@ window.SONGBOOK_LANG.mn = {
   // Easter egg: greeting shown by the small mascot that appears on the
   // Songbook page on Saturdays (Sabbath). See initSabbathMascot() in app.js.
   sabbathGreeting: "Шаббатын мэнд",
+
+  // Developer options — hidden Settings section unlocked by tapping the
+  // About page's app icon 3 times. See initDevOptions() in app.js.
+  toastDevUnlocked: "Хөгжүүлэгчийн тохиргоо нээгдлээ",
+  sectionDevOptions: "Хөгжүүлэгчийн тохиргоо",
+  devEasterEggsTitle: "Далд онцлогуудыг заавал асаах",
+  devEasterEggsSub: "Шаббатын дүрс, Христийн Мэндэлсний Баярын цас, найр наадмын горимыг өдөр хүлээхгүйгээр, өөрийн товчлуурыг дарахгүйгээр урьдчилан үзэх боломжтой. Үүнийг унтраасан ч далд онцлогууд ажиллахгүй болохгүй — тэд өөрсдийн жинхэнэ аргаараа л ажиллана.",
+  devTradMongolianTitle: "Монгол бичиг",
+  devTradMongolianSub: "Дээрх хэлний жагсаалтад уламжлалт монгол бичгийн сонголтыг нэмнэ (одоогоор бэлтгэгдэж байна)",
+  devCreditsTitle: "Оролцогсдыг харуулах",
+  devCreditsSub: "Хамтран Ажилласан хуудсанд Оролцсон хэсгийг харуулна (одоогоор бэлтгэгдэж байна)",
 };

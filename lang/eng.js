@@ -38,7 +38,6 @@ window.SONGBOOK_LANG.en = {
   accentTitle: "Accent color",
   accentSub: "Choose the app's accent color",
   listenLink: "Listen",
-  downloadAudio: "Download",
   sectionLangDb: "Language & Song Database",
   dbTitle: "Song database",
   dbSub: "Choose which songbook source to use",
@@ -122,4 +121,15 @@ window.SONGBOOK_LANG.en = {
   // Easter egg: greeting shown by the small mascot that appears on the
   // Songbook page on Saturdays (Sabbath). See initSabbathMascot() in app.js.
   sabbathGreeting: "Happy Sabbath!",
+
+  // Developer options — hidden Settings section unlocked by tapping the
+  // About page's app icon 3 times. See initDevOptions() in app.js.
+  toastDevUnlocked: "Developer options unlocked",
+  sectionDevOptions: "Developer options",
+  devEasterEggsTitle: "Force easter eggs on",
+  devEasterEggsSub: "Preview the Sabbath mascot, Christmas snow, and party mode without waiting for their date or tapping their own trigger. Turning this off doesn't disable them — each still works its own original way.",
+  devTradMongolianTitle: "Traditional Mongolian script",
+  devTradMongolianSub: "Adds the vertical traditional-script option to the language list above (still being finished)",
+  devCreditsTitle: "Show credits",
+  devCreditsSub: "Shows the Credits list on the About page (still being finished)",
 };

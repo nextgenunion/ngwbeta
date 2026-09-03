@@ -34,7 +34,6 @@ window.SONGBOOK_LANG.kr = {
   accentTitle: "강조 색상",
   accentSub: "앱의 강조 색상을 선택하세요",
   listenLink: "듣기",
-  downloadAudio: "다운로드",
   sectionLangDb: "언어 및 찬양집",
   dbTitle: "찬양집",
   dbSub: "사용할 찬양집을 선택하세요",
@@ -118,4 +117,15 @@ window.SONGBOOK_LANG.kr = {
   // Easter egg: greeting shown by the small mascot that appears on the
   // Songbook page on Saturdays (Sabbath). See initSabbathMascot() in app.js.
   sabbathGreeting: "행복한 안식일 되세요!",
+
+  // Developer options — hidden Settings section unlocked by tapping the
+  // About page's app icon 3 times. See initDevOptions() in app.js.
+  toastDevUnlocked: "개발자 옵션이 열렸습니다",
+  sectionDevOptions: "개발자 옵션",
+  devEasterEggsTitle: "이스터에그 강제 활성화",
+  devEasterEggsSub: "날짜를 기다리거나 각자의 트리거를 누르지 않고 안식일 마스코트, 크리스마스 눈, 파티 모드를 미리 볼 수 있습니다. 이 옵션을 끄더라도 기능 자체가 비활성화되지는 않습니다 — 각각 원래 방식대로 계속 작동합니다.",
+  devTradMongolianTitle: "전통 몽골 문자",
+  devTradMongolianSub: "위 언어 목록에 세로쓰기 전통 몽골 문자 옵션을 추가합니다 (아직 준비 중)",
+  devCreditsTitle: "크레딧 표시",
+  devCreditsSub: "정보 페이지에 크레딧 목록을 표시합니다 (아직 준비 중)",
 };

@@ -113,6 +113,24 @@ const state = {
   currentPage: 'songs', // mirrors whichever page is currently visible (see showPage)
   playlists: { order: [], byId: {} }, // see "Playlists" section below
   activePlaylistId: null,
+
+  // ---- Developer options (see initDevOptions()) ----
+  // The section itself only appears after tapping the About page's app
+  // icon 3 times in a row (see bindDevOptionsUnlock()) — devUnlocked isn't
+  // persisted, so the section is hidden again on every fresh load and has
+  // to be re-unlocked, the same as the existing accent-color easter egg.
+  devUnlocked: false,
+  // devEasterEggsForced: the one master switch, OFF by default. Turning it
+  // ON force-shows all three easter eggs (Sabbath mascot, Christmas snow,
+  // accent disco/"party mode") regardless of today's date or manual-tap
+  // state. Turning it back OFF does NOT disable them — it just stops
+  // forcing them on, so each one falls back to its own original secret
+  // trigger exactly as before this feature existed: Sabbath/Christmas by
+  // date, party mode by 3 taps on "Accent color". See each easter egg's
+  // isXActive()-style check further down for how this override is read.
+  devEasterEggsForced: false,
+  devTradMongolian: false, // see refreshLangPicker()
+  devCredits: false,       // see renderCredits()
 };
 
 // Registry of every page the router (showPage/bindNav) knows about. Adding
@@ -267,14 +285,17 @@ function renderSocialLinks() {
 // adding/removing people, never needs a code change. creditsEnabled is a
 // separate on/off switch from the list itself — flipping it off hides the
 // section without losing the entries in `credits`, so turning it back on
-// later doesn't mean re-typing everyone in.
+// later doesn't mean re-typing everyone in. Developer options' own
+// Credits toggle (state.devCredits) is a second, runtime way to turn it
+// back on for preview purposes without editing config.js — either one
+// being on is enough to show the section.
 function renderCredits() {
   const section = document.getElementById('about-credits');
   const list = document.getElementById('about-credits-list');
   if (!section || !list) return;
   const config = window.SONGBOOK_APP_CONFIG || {};
   const credits = config.credits || [];
-  if (!config.creditsEnabled || !credits.length) {
+  if (!(config.creditsEnabled || state.devCredits) || !credits.length) {
     section.hidden = true;
     list.innerHTML = '';
     return;
@@ -331,6 +352,7 @@ async function init() {
   safe('initSabbathMascot', initSabbathMascot);
   safe('initChristmasSnow', initChristmasSnow);
   safe('bindAccentDiscoEasterEgg', bindAccentDiscoEasterEgg);
+  safe('initDevOptions', initDevOptions);
   requestPersistentStorage(); // fire-and-forget; never block startup on this
 
   await Promise.all([loadSongData(), loadPlaylists()]);
@@ -712,6 +734,54 @@ function initSplash() {
 // ---------------------------------------------------------
 // Preferences (persisted locally — offline-first, no cloud)
 // ---------------------------------------------------------
+// Builds/rebuilds the language <select>'s option list from whichever
+// lang/*.js files actually registered themselves on window.SONGBOOK_LANG
+// (see lang/config.js's SONGBOOK_LANG_ORDER for the preferred ordering).
+// Pulled out of loadPrefs() so it can also be re-run live when the
+// "Traditional Mongolian script" developer toggle flips — see
+// applyDevOptions() — without redoing loadPrefs()'s once-only theme/accent
+// setup. isInit=true (the loadPrefs() call site) additionally resolves
+// state.lang itself; later re-runs just rebuild the visible option list
+// and leave the already-chosen language alone.
+function refreshLangPicker({ isInit = false } = {}) {
+  const savedLang = localStorage.getItem('sb-ui-lang');
+  let available = Object.keys(window.SONGBOOK_LANG || {});
+  // "mn2" (traditional Mongolian script) is always loaded (see the
+  // <script> tags in index.html) so its data is ready the instant the
+  // developer toggle turns it on, but it stays out of the picker itself —
+  // and gets silently reset back to the default language if it was
+  // somehow the active choice — whenever that toggle is off. See
+  // applyDevOptions() for where devTradMongolian is set/read.
+  if (!state.devTradMongolian) available = available.filter(code => code !== 'mn2');
+
+  const preferredOrder = window.SONGBOOK_LANG_ORDER || [];
+  const orderedLangs = [
+    ...preferredOrder.filter(code => available.includes(code)),
+    ...available.filter(code => !preferredOrder.includes(code)).sort(),
+  ];
+
+  if (isInit) {
+    state.lang = (savedLang && available.includes(savedLang)) ? savedLang
+      : (available.includes(window.SONGBOOK_DEFAULT_LANG) ? window.SONGBOOK_DEFAULT_LANG : orderedLangs[0]);
+  } else if (!available.includes(state.lang)) {
+    // The toggle just turned off while mn2 was the active language —
+    // fall back the same way isInit does, then re-render everything in
+    // the new language so nothing is left showing mn2 text with mn2
+    // missing from the picker.
+    state.lang = available.includes(window.SONGBOOK_DEFAULT_LANG) ? window.SONGBOOK_DEFAULT_LANG : orderedLangs[0];
+    localStorage.setItem('sb-ui-lang', state.lang);
+  }
+  document.documentElement.setAttribute('lang', state.lang);
+
+  const langSelect = document.getElementById('ui-lang-select');
+  if (langSelect) {
+    langSelect.innerHTML = orderedLangs
+      .map(code => `<option value="${code}">${(window.SONGBOOK_LANG[code].meta && window.SONGBOOK_LANG[code].meta.name) || code}</option>`)
+      .join('');
+    langSelect.value = state.lang;
+  }
+}
+
 function loadPrefs() {
   // Default to the system's light/dark preference on first run (no saved
   // choice yet) rather than hardcoding 'light'. This matters beyond just
@@ -750,24 +820,7 @@ function loadPrefs() {
     btn.setAttribute('aria-pressed', String(btn.dataset.accent === accent));
   });
 
-  const savedLang = localStorage.getItem('sb-ui-lang');
-  const available = Object.keys(window.SONGBOOK_LANG || {});
-  const preferredOrder = window.SONGBOOK_LANG_ORDER || [];
-  const orderedLangs = [
-    ...preferredOrder.filter(code => available.includes(code)),
-    ...available.filter(code => !preferredOrder.includes(code)).sort(),
-  ];
-  state.lang = (savedLang && available.includes(savedLang)) ? savedLang
-    : (available.includes(window.SONGBOOK_DEFAULT_LANG) ? window.SONGBOOK_DEFAULT_LANG : orderedLangs[0]);
-  document.documentElement.setAttribute('lang', state.lang);
-
-  const langSelect = document.getElementById('ui-lang-select');
-  if (langSelect) {
-    langSelect.innerHTML = orderedLangs
-      .map(code => `<option value="${code}">${(window.SONGBOOK_LANG[code].meta && window.SONGBOOK_LANG[code].meta.name) || code}</option>`)
-      .join('');
-    langSelect.value = state.lang;
-  }
+  refreshLangPicker({ isInit: true });
 
   const lyricsSize = parseFloat(localStorage.getItem('sb-lyrics-size'));
   const chordSize = parseFloat(localStorage.getItem('sb-chord-size'));
@@ -810,6 +863,105 @@ function applyHideChords() {
   document.documentElement.setAttribute('data-hide-chords', String(state.hideChords));
   const toggle = document.getElementById('hide-chords-toggle');
   if (toggle) toggle.setAttribute('aria-checked', String(state.hideChords));
+}
+
+// ---------------------------------------------------------
+// Developer options — a hidden Settings section for a few things that
+// don't belong in front of every visitor: moving playlists between
+// browsers (export/import), and toggles for content that's still being
+// finished (traditional Mongolian script, the About page credits list)
+// or that's just for fun (forcing all three easter eggs on to preview
+// them without waiting for the right date).
+//
+// Unlocked per-session only (not persisted — see state.devUnlocked) by
+// tapping the About page's app icon 3 times in a row, the same
+// 3-tap-within-800ms pattern as the existing accent-color disco easter
+// egg. Once unlocked, the section itself lives in Settings (below Contact
+// us), not on the About page — see bindDevOptionsUnlock() for the tap
+// trigger and initDevOptions()/applyDevOptions() for the section's own
+// toggles and their effects.
+// ---------------------------------------------------------
+
+function unlockDevOptions() {
+  if (state.devUnlocked) return;
+  state.devUnlocked = true;
+  const section = document.getElementById('dev-options-section');
+  if (section) section.hidden = false;
+  showToast(t('toastDevUnlocked'));
+}
+
+function bindDevOptionsUnlock() {
+  const icon = document.querySelector('.about-logo');
+  if (!icon) return;
+  let tapTimes = [];
+  icon.addEventListener('click', () => {
+    if (state.devUnlocked) return; // already unlocked, nothing left to trigger
+    const now = Date.now();
+    tapTimes = tapTimes.filter(ts => now - ts < 800).concat(now);
+    if (tapTimes.length >= 3) {
+      tapTimes = [];
+      unlockDevOptions();
+    }
+  });
+}
+
+// Applies the current value of each developer toggle to the parts of the
+// app they affect, and syncs the switches' own visual state. Called once
+// on init (values are never persisted — every toggle starts OFF each
+// fresh load, same as state.devUnlocked) and again after each toggle's
+// own click handler flips its state field.
+function applyDevOptions() {
+  const eggsToggle = document.getElementById('dev-easter-eggs-toggle');
+  if (eggsToggle) eggsToggle.setAttribute('aria-checked', String(state.devEasterEggsForced));
+  // Turning the master switch off doesn't disable the eggs — it just
+  // stops forcing them on; isSabbathToday()/isChristmasWeek() fall back
+  // to their date checks on their own next read. Only refresh the two
+  // that poll on an interval rather than waiting for their own next
+  // check, so flipping the switch shows an immediate result either way.
+  const sabbathEl = document.getElementById('sabbath-mascot');
+  if (sabbathEl) {
+    const show = isSabbathToday();
+    sabbathEl.hidden = !show;
+    if (show) updateSabbathMascotText();
+  }
+  if (window.__ngwRefreshChristmasSnow) window.__ngwRefreshChristmasSnow();
+  // Party mode (disco) has no polling loop to refresh — it's a
+  // start/stop action, not a continuously-rechecked condition. Only act
+  // on an actual state change here, and only take ownership of sessions
+  // this same switch started (see discoForcedByDevToggle's comment).
+  if (state.devEasterEggsForced && !discoModeActive) {
+    discoForcedByDevToggle = true;
+    startDiscoMode();
+  } else if (!state.devEasterEggsForced && discoModeActive && discoForcedByDevToggle) {
+    discoForcedByDevToggle = false;
+    stopDiscoMode();
+  }
+
+  const mongolianToggle = document.getElementById('dev-trad-mongolian-toggle');
+  if (mongolianToggle) mongolianToggle.setAttribute('aria-checked', String(state.devTradMongolian));
+  refreshLangPicker();
+  applyLanguage();
+
+  const creditsToggle = document.getElementById('dev-credits-toggle');
+  if (creditsToggle) creditsToggle.setAttribute('aria-checked', String(state.devCredits));
+  renderCredits();
+}
+
+function initDevOptions() {
+  bindDevOptionsUnlock();
+
+  document.getElementById('dev-easter-eggs-toggle').addEventListener('click', () => {
+    state.devEasterEggsForced = !state.devEasterEggsForced;
+    applyDevOptions();
+  });
+  document.getElementById('dev-trad-mongolian-toggle').addEventListener('click', () => {
+    state.devTradMongolian = !state.devTradMongolian;
+    applyDevOptions();
+  });
+  document.getElementById('dev-credits-toggle').addEventListener('click', () => {
+    state.devCredits = !state.devCredits;
+    applyDevOptions();
+  });
 }
 
 // ---------------------------------------------------------
@@ -865,6 +1017,13 @@ function applyLanguage() {
     't-versionTitle': 'versionTitle',
     't-creditsHeading': 'creditsHeading',
     'about-nav-sub': 'aboutNavSub',
+    't-sectionDevOptions': 'sectionDevOptions',
+    't-devEasterEggsTitle': 'devEasterEggsTitle',
+    't-devEasterEggsSub': 'devEasterEggsSub',
+    't-devTradMongolianTitle': 'devTradMongolianTitle',
+    't-devTradMongolianSub': 'devTradMongolianSub',
+    't-devCreditsTitle': 'devCreditsTitle',
+    't-devCreditsSub': 'devCreditsSub',
   };
   Object.entries(map).forEach(([id, key]) => {
     const el = document.getElementById(id);
@@ -1396,11 +1555,9 @@ function openSong(song, opts = {}) {
     audioEl.hidden = false;
     audioEl.innerHTML = song.audio.map(a => {
       const url = escapeHtml(a.url || a);
-      const fileName = escapeHtml((a.url || a).split('/').pop());
       return `
         <div class="audio-item">
           <audio controls style="width:100%" src="${url}"></audio>
-          <a class="audio-download" href="${url}" download="${fileName}">⭳ ${t('downloadAudio')}</a>
         </div>`;
     }).join('');
   } else {
@@ -2854,6 +3011,10 @@ function isSabbathToday() {
   // just to preview it. Harmless to leave in; nobody stumbles into it by
   // accident since it takes a deliberate query param.
   if (new URLSearchParams(location.search).get('previewSabbath') === '1') return true;
+  // Developer options → "Easter eggs" master switch: force this on
+  // regardless of the actual day/time. Off by default and does NOT
+  // change the date logic below when off — see state.devEasterEggsForced.
+  if (state.devEasterEggsForced) return true;
   const now = new Date();
   const day = now.getDay(); // Sunday=0 ... Friday=5, Saturday=6
   const minutesOfDay = now.getHours() * 60 + now.getMinutes();
@@ -2899,6 +3060,8 @@ function isChristmasWeek() {
   // Testing hook: ?previewChristmas=1 forces it on regardless of the
   // actual date — same idea as ?previewSabbath=1 above.
   if (new URLSearchParams(location.search).get('previewChristmas') === '1') return true;
+  // Same developer-options override as isSabbathToday() above.
+  if (state.devEasterEggsForced) return true;
   const now = new Date();
   const month = now.getMonth(); // 0-indexed: 11 = December, 0 = January
   const date = now.getDate();
@@ -2976,6 +3139,10 @@ function initChristmasSnow() {
 
   refresh();
   setInterval(refresh, CHECK_INTERVAL);
+  // Exposed so Developer options' Easter eggs switch (see
+  // applyDevOptions()) can trigger an immediate re-check instead of
+  // waiting up to CHECK_INTERVAL for the toggle's effect to show.
+  window.__ngwRefreshChristmasSnow = refresh;
 }
 
 // ---------------------------------------------------------
@@ -3040,6 +3207,14 @@ function hslToHex(h, s, l) {
 let discoModeActive = false;
 let discoInterval = null;
 let discoHue = 0;
+// Tracks *why* disco mode is currently running — set when Developer
+// options' Easter eggs switch turned it on, so turning that switch back
+// off only stops it if it's still the reason disco mode is active. If the
+// person separately 3-tapped "Accent color" (the original secret trigger)
+// either before or after, that manual session is left alone — the dev
+// switch never stops a session it didn't start. See applyDevOptions() and
+// bindAccentDiscoEasterEgg() below for both sides of this handoff.
+let discoForcedByDevToggle = false;
 
 const DISCO_TICK_MS = 300;
 const DISCO_PERIOD_SECONDS = 48; // one full hue rotation every 48s — slow, not fast
@@ -3087,6 +3262,12 @@ function bindAccentDiscoEasterEgg() {
     clickTimes = clickTimes.filter(ts => now - ts < 800).concat(now);
     if (clickTimes.length >= 3) {
       clickTimes = [];
+      // A manual tap always takes ownership of whatever state disco mode
+      // ends up in — if the dev switch had forced it on, tapping now
+      // stops it (the person's own 3-tap should always be able to turn it
+      // off); starting it manually also clears the forced flag so a later
+      // dev-switch-off doesn't retroactively kill this session.
+      discoForcedByDevToggle = false;
       discoModeActive ? stopDiscoMode() : startDiscoMode();
     }
   });

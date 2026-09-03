@@ -27,8 +27,8 @@
 <meta name="theme-color" content="#F3F3F1" media="(prefers-color-scheme: light)">
 
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icons/app-icon-192.png">
-<link rel="apple-touch-icon" href="icons/app-icon-192.png">
+<link rel="icon" href="icons/app-icon.png">
+<link rel="apple-touch-icon" href="icons/app-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <!-- Shorter name for the phone/desktop home-screen label -->
@@ -282,17 +282,6 @@
         <button id="reload-app-btn" class="btn-secondary" type="button"></button>
       </div>
     </div>
-    <div class="settings-row">
-      <div class="settings-row-text">
-        <span class="settings-row-title" id="t-playlistsBackupTitle">Playlists backup</span>
-        <span class="settings-row-sub" id="t-playlistsBackupSub">Playlists are saved on this device per browser. Export/import a file to move them to another browser on this phone.</span>
-      </div>
-      <div class="settings-row-actions">
-        <button id="export-playlists-btn" class="btn-secondary" type="button"></button>
-        <button id="import-playlists-btn" class="btn-secondary" type="button"></button>
-        <input type="file" id="import-playlists-file" accept="application/json" hidden>
-      </div>
-    </div>
   </section>
 
   <section class="settings-section about-section">
@@ -315,6 +304,52 @@
           <svg data-icon="copy" viewBox="0 0 24 24"></svg>
         </button>
       </div>
+    </div>
+  </section>
+
+  <!-- Hidden until unlocked: tap the About page's app icon 3 times in a
+       row (see bindDevOptionsUnlock() in app.js). Not persisted — hidden
+       again on every fresh load. -->
+  <section class="settings-section" id="dev-options-section" hidden>
+    <h3 class="settings-heading" id="t-sectionDevOptions">Developer options</h3>
+
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-playlistsBackupTitle">Playlists backup</span>
+        <span class="settings-row-sub" id="t-playlistsBackupSub">Playlists are saved on this device per browser. Export/import a file to move them to another browser on this phone.</span>
+      </div>
+      <div class="settings-row-actions">
+        <button id="export-playlists-btn" class="btn-secondary" type="button"></button>
+        <button id="import-playlists-btn" class="btn-secondary" type="button"></button>
+        <input type="file" id="import-playlists-file" accept="application/json" hidden>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-devEasterEggsTitle">Force easter eggs on</span>
+        <span class="settings-row-sub" id="t-devEasterEggsSub">Preview the Sabbath mascot, Christmas snow, and party mode without waiting for their date or tapping their own trigger. Turning this off doesn't disable them — each still works its own original way.</span>
+      </div>
+      <button id="dev-easter-eggs-toggle" class="switch" role="switch" aria-checked="false" aria-label="Force easter eggs on">
+        <span class="switch-knob"></span>
+      </button>
+    </div>
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-devTradMongolianTitle">Traditional Mongolian script</span>
+        <span class="settings-row-sub" id="t-devTradMongolianSub">Adds the vertical traditional-script option to the language list above (still being finished)</span>
+      </div>
+      <button id="dev-trad-mongolian-toggle" class="switch" role="switch" aria-checked="false" aria-label="Traditional Mongolian script">
+        <span class="switch-knob"></span>
+      </button>
+    </div>
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-devCreditsTitle">Show credits</span>
+        <span class="settings-row-sub" id="t-devCreditsSub">Shows the Credits list on the About page (still being finished)</span>
+      </div>
+      <button id="dev-credits-toggle" class="switch" role="switch" aria-checked="false" aria-label="Show credits">
+        <span class="switch-knob"></span>
+      </button>
     </div>
   </section>
 
@@ -342,7 +377,7 @@
   </header>
 
   <div class="about-block">
-    <img src="icons/about-logo.png" alt="" class="about-logo">
+    <img src="icons/app-icon.png" alt="" class="about-logo">
     <p class="about-label" id="t-versionTitle">Version</p>
     <p class="about-appname" id="about-version-line">Next Gen Worship Beta</p>
     <p class="about-description" id="about-description">Offline songbook for Adventist Church.</p>
@@ -411,7 +446,12 @@
 <script src="lang/config.js"></script>
 <script src="lang/eng.js"></script>
 <script src="lang/mn.js"></script>
-<!-- mn2 (traditional Mongolian script) temporarily hidden from the language picker — re-enable by uncommenting: <script src="lang/mn2.js"></script> -->
+<!-- mn2 (traditional Mongolian script) is always loaded so its data is
+     ready the instant Settings → Developer options → "Traditional
+     Mongolian script" is switched on, but it's filtered out of the
+     language picker itself unless that toggle is on — see
+     refreshLangPicker() in app.js. -->
+<script src="lang/mn2.js"></script>
 <script src="lang/kr.js"></script>
 <!-- Song data now loads at runtime from data/songs/ (see js/app.js loadSongData) -->
 <script src="js/app.js" defer></script>

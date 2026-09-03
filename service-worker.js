@@ -44,8 +44,8 @@ const CORE_SHELL = [
   './lang/config.js',
   './lang/eng.js',
   './lang/mn.js',
+  './lang/mn2.js', // always loaded now — see index.html's script tag comment
   './lang/kr.js',
-  // './lang/mn2.js', // temporarily hidden from the language picker (not loaded in index.html) — re-enable both together
 ];
 
 // Icons and other assets: cached best-effort, one at a time. A single
@@ -54,12 +54,9 @@ const CORE_SHELL = [
 // visitor stuck on an old cached version indefinitely, with no way to
 // pick up a fix short of manually clearing site data.
 const BEST_EFFORT_ASSETS = [
-  './icons/app-icon-192.png',
-  './icons/app-icon-512.png',
-  './icons/app-icon-maskable-192.png',
-  './icons/app-icon-maskable-512.png',
+  './icons/app-icon.png',
+  './icons/app-icon-maskable.png',
   './icons/splash-logo.png',
-  './icons/about-logo.png',
 
   './icons/svg/brand-music-note.svg',
   './icons/svg/search.svg',

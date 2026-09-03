@@ -1009,11 +1009,23 @@ html[data-chord-style="text"] .chord-tag {
    chords stay in the song data and the Chips/Text choice is preserved
    underneath, but every chord tag is removed from view and its reserved
    row collapses to 0 so lyric lines pull up tight with no gap left where
-   the chords used to sit — same idea as .is-plain's tighter rhythm, just
-   applied everywhere rather than only on already-chordless lines. */
+   the chords used to sit. */
 html[data-hide-chords="true"] .chord-tag,
 html[data-hide-chords="true"] .chord-tag-spacer {
   display: none;
+}
+/* With no chords showing, every line should read like .is-plain already
+   does for lines that never had chords in the first place (see comment
+   above .is-plain below) — not the tight chord-chart rhythm meant to sit
+   close to a chord row that, here, is invisible. Re-apply .is-plain's
+   spacing values to every line rather than just already-chordless ones,
+   so hiding chords gives the same comfortable reading spacing throughout
+   instead of leaving former chord-lines condensed. */
+html[data-hide-chords="true"] .lyric-line {
+  align-items: baseline;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  gap: 10px 0.3em;
 }
 
 /* Subtle "pop" when chords change (transpose up/down/reset). Applied only
@@ -1034,7 +1046,7 @@ html[data-hide-chords="true"] .chord-tag-spacer {
   font-size: var(--lyrics-size);
   color: var(--ink);
   font-family: var(--font-lyrics);
-  font-weight: 400;
+  font-weight: 450;
   min-width: 0;
   max-width: 100%;
   overflow-wrap: break-word;
@@ -1043,16 +1055,6 @@ html[data-hide-chords="true"] .chord-tag-spacer {
 .sv-audio { margin-top: 20px; }
 .audio-item { margin-top: 8px; }
 .audio-item + .audio-item { margin-top: 16px; }
-.audio-download {
-  display: none; /* planned for a future version — re-enable by removing this line */
-  align-items: center;
-  gap: 4px;
-  margin-top: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--accent-strong);
-  text-decoration: none;
-}
 
 .sv-links { flex-direction: column; gap: 8px; margin-top: 12px; }
 .sv-links:not([hidden]) { display: flex; }

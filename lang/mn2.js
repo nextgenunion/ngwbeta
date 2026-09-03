@@ -37,7 +37,6 @@ window.SONGBOOK_LANG.mn2 = {
   accentTitle: "ᠥᠩᢉᠡᠨ ᠦ᠋ ᠵᠠᠭᠪᠤᠷ",
   accentSub: "ᠠᠫᠫ ᠤ᠋ᠨ ᠥᠩᢉᠡᠨ ᠦ᠋ ᠵᠠᠭᠪᠤᠷ ᠢ᠋ ᠰᠣᠩᠭᠤᠨ᠎ᠠ ᠤᠤ",
   listenLink: "ᠰᠣᠨᠤᠰᠬᠤ",
-  downloadAudio: "ᠲᠠᠲᠠᠵᠤ ᠠᠪᠬᠤ",
   sectionLangDb: "ᢈᠡᠯᠡ ᠪᠠ ᠳᠠᠭᠤᠨ ᠤ᠋ ᠰᠠᠩ",
   dbTitle: "ᠳᠠᠭᠤᠨ ᠤ᠋ ᠰᠠᠩ",
   dbSub: "ᠶᠠᠮᠠᠷ ᠳᠠᠭᠤᠨ ᠤ᠋ ᠰᠠᠩ ᠠ᠋ᠴᠠ ᠠᠰᠢᠭᠯᠠᠬᠤ ᠪᠠᠨ ᠰᠣᠩᠭᠤᠨ᠎ᠠ ᠤᠤ",
@@ -124,4 +123,17 @@ window.SONGBOOK_LANG.mn2 = {
   // Songbook page on Saturdays (Sabbath). See initSabbathMascot() in app.js.
   // Falls back to Cyrillic like a few other entries in this file.
   sabbathGreeting: "Шаббатын мэнд",
+
+  // Developer options — hidden Settings section unlocked by tapping the
+  // About page's app icon 3 times. See initDevOptions() in app.js. Falls
+  // back to Cyrillic like the other entries above that haven't been
+  // transliterated into traditional script yet.
+  toastDevUnlocked: "Хөгжүүлэгчийн тохиргоо нээгдлээ",
+  sectionDevOptions: "Хөгжүүлэгчийн тохиргоо",
+  devEasterEggsTitle: "Далд онцлогуудыг заавал асаах",
+  devEasterEggsSub: "Шаббатын дүрс, Христийн Мэндэлсний Баярын цас, найр наадмын горимыг өдөр хүлээхгүйгээр, өөрийн товчлуурыг дарахгүйгээр урьдчилан үзэх боломжтой. Үүнийг унтраасан ч далд онцлогууд ажиллахгүй болохгүй — тэд өөрсдийн жинхэнэ аргаараа л ажиллана.",
+  devTradMongolianTitle: "Монгол бичиг",
+  devTradMongolianSub: "Дээрх хэлний жагсаалтад уламжлалт монгол бичгийн сонголтыг нэмнэ (одоогоор бэлтгэгдэж байна)",
+  devCreditsTitle: "Оролцогсдыг харуулах",
+  devCreditsSub: "Хамтран Ажилласан хуудсанд Оролцсон хэсгийг харуулна (одоогоор бэлтгэгдэж байна)",
 };
