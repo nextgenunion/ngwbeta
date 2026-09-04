@@ -5,6 +5,7 @@
 
 window.SONGBOOK_APP_CONFIG = {
   orgName: "Next Gen Union",
+  contactEmail: "nextgenunionmn@gmail.com",
 
   // Shown as icon links on the About page. Leave a value as "" to hide
   // that icon — these are placeholder/dummy URLs for now, swap them for
