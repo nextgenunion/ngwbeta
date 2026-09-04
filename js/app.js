@@ -122,7 +122,7 @@ const state = {
   chordStyle: 'chip', // 'chip' | 'text' — see applyChordStyle()
   hideChords: false,  // see applyHideChords()
   lyricsWeight: 'normal',  // 'normal' | 'semibold' | 'bold' — see applyLyricsWeight()
-  lyricsSpacing: 'normal', // 'tight' | 'normal' | 'loose' — see applyLyricsSpacing()
+  lyricsSpacing: 'tight', // 'tight' | 'normal' | 'loose' — see applyLyricsSpacing()
   lang: 'mn',
   currentPage: 'songs', // mirrors whichever page is currently visible (see showPage)
   playlists: { order: [], byId: {} }, // see "Playlists" section below

@@ -76,6 +76,7 @@
   --lyric-line-gap: 4px;
   --lyric-line-mb: 4px;
   --lyric-line-lh: 1.15;
+  --lyric-chord-mb: 3px;   /* gap between a chord tag and its own word below it */
   --lyric-line-plain-lh: 1.5;
   --lyric-line-plain-mb: 10px;
   --lyric-line-plain-gap: 10px;
@@ -957,11 +958,22 @@ html[data-theme="dark"] .seg-toggle-btn[aria-pressed="true"] {
 
 /* Line spacing options (Settings → Appearance → Line spacing). Only the
    lyric line rhythm above changes — general app UI spacing is untouched.
-   "Normal" needs no override; it's just the :root defaults above. */
+   "Normal" needs no override; it's just the :root defaults above.
+
+   Tight deliberately does NOT shrink --lyric-line-gap/--lyric-line-mb as
+   far down as it first did — that squeezed a line's chord tags right up
+   against the *previous* line's words (the gap that separates one line
+   from the next has to stay a few px no matter how tight, or the two
+   start reading as one smashed-together row). Instead the tightening
+   happens on --lyric-chord-mb, the gap between each chord tag and its
+   OWN word directly beneath it — that pairing can safely get much closer
+   together since they belong to each other, without ever touching (the
+   chord tag's own line-box provides the floor). */
 html[data-lyrics-spacing="tight"] {
-  --lyric-line-gap: 2px;
-  --lyric-line-mb: 2px;
+  --lyric-line-gap: 3px;
+  --lyric-line-mb: 3px;
   --lyric-line-lh: 1.05;
+  --lyric-chord-mb: 1px;
   --lyric-line-plain-lh: 1.3;
   --lyric-line-plain-mb: 6px;
   --lyric-line-plain-gap: 6px;
@@ -970,6 +982,7 @@ html[data-lyrics-spacing="loose"] {
   --lyric-line-gap: 8px;
   --lyric-line-mb: 8px;
   --lyric-line-lh: 1.3;
+  --lyric-chord-mb: 5px;
   --lyric-line-plain-lh: 1.7;
   --lyric-line-plain-mb: 16px;
   --lyric-line-plain-gap: 16px;
@@ -1016,8 +1029,10 @@ html[data-lyrics-spacing="loose"] {
   color: var(--paper);
   background: var(--accent);
   border-radius: 5px;
-  padding: 1px 5px;
-  margin-bottom: 3px;
+  /* Vertical padding trimmed to a hair (was 1px) — a little less chip
+     height, kept easy to read since the font-size itself is unchanged. */
+  padding: 0 5px;
+  margin-bottom: var(--lyric-chord-mb);
   align-self: flex-start;
   box-shadow: 0 1px 0 rgba(0,0,0,0.08);
   transform: translateY(0);
@@ -1037,7 +1052,12 @@ html[data-chord-style="text"] .chord-tag {
   padding: 0 0 1px;
   box-shadow: none;
 }
-.chord-tag-spacer { height: calc(var(--chord-size) + 6px); }
+/* Reserves the same vertical space a real chord tag would take (so a
+   chordless word lines up with a chorded one next to it) — tracks the
+   same padding/margin the tag itself now uses, including the
+   --lyric-chord-mb spacing-mode variable, so the two never drift out of
+   sync as the chip or the spacing option above changes. */
+.chord-tag-spacer { height: calc(var(--chord-size) + var(--lyric-chord-mb) + 1px); }
 
 /* Hide chords (opt-in via the switch under the Chord style toggle):
    chords stay in the song data and the Chips/Text choice is preserved
