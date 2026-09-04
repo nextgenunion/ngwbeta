@@ -66,6 +66,20 @@
   --lyrics-size: 1.05rem;
   --chord-size: 0.82rem;
 
+  /* Lyric line vertical spacing (Settings → Appearance → Line spacing).
+     "Normal" here reproduces the original hardcoded values .lyric-line /
+     .lyric-line.is-plain used before this became configurable — see the
+     html[data-lyrics-spacing="tight"|"loose"] overrides near .lyric-line
+     below for the other two options. Kept as their own variable group
+     (rather than reusing --lyrics-size etc.) since these are unitless/px
+     spacing values, not font sizes. */
+  --lyric-line-gap: 4px;
+  --lyric-line-mb: 4px;
+  --lyric-line-lh: 1.15;
+  --lyric-line-plain-lh: 1.5;
+  --lyric-line-plain-mb: 10px;
+  --lyric-line-plain-gap: 10px;
+
   --nav-h: 68px;
   --radius-s: 8px;
   --radius-m: 14px;
@@ -922,9 +936,9 @@ html[data-theme="dark"] .seg-toggle-btn[aria-pressed="true"] {
      non-wrapped lines sitting right next to them — the "inconsistent
      vertical spacing" bug. Keep the two values yoked together (see
      .is-plain below, which needs a bigger row-gap for the same reason). */
-  gap: 4px 0.3em;
-  margin-bottom: 4px;
-  line-height: 1.15;
+  gap: var(--lyric-line-gap) 0.3em;
+  margin-bottom: var(--lyric-line-mb);
+  line-height: var(--lyric-line-lh);
 }
 /* A line with no chords at all (see renderLyrics) has nothing to reserve
    the chord row's height for, so it drops the tight chord-chart rhythm
@@ -936,9 +950,29 @@ html[data-theme="dark"] .seg-toggle-btn[aria-pressed="true"] {
    same breathing room as the gap to the next line down. */
 .lyric-line.is-plain {
   align-items: baseline;
-  line-height: 1.5;
-  margin-bottom: 10px;
-  gap: 10px 0.3em;
+  line-height: var(--lyric-line-plain-lh);
+  margin-bottom: var(--lyric-line-plain-mb);
+  gap: var(--lyric-line-plain-gap) 0.3em;
+}
+
+/* Line spacing options (Settings → Appearance → Line spacing). Only the
+   lyric line rhythm above changes — general app UI spacing is untouched.
+   "Normal" needs no override; it's just the :root defaults above. */
+html[data-lyrics-spacing="tight"] {
+  --lyric-line-gap: 2px;
+  --lyric-line-mb: 2px;
+  --lyric-line-lh: 1.05;
+  --lyric-line-plain-lh: 1.3;
+  --lyric-line-plain-mb: 6px;
+  --lyric-line-plain-gap: 6px;
+}
+html[data-lyrics-spacing="loose"] {
+  --lyric-line-gap: 8px;
+  --lyric-line-mb: 8px;
+  --lyric-line-lh: 1.3;
+  --lyric-line-plain-lh: 1.7;
+  --lyric-line-plain-mb: 16px;
+  --lyric-line-plain-gap: 16px;
 }
 
 .lyric-section-number {
@@ -1023,9 +1057,9 @@ html[data-hide-chords="true"] .chord-tag-spacer {
    instead of leaving former chord-lines condensed. */
 html[data-hide-chords="true"] .lyric-line {
   align-items: baseline;
-  line-height: 1.5;
-  margin-bottom: 10px;
-  gap: 10px 0.3em;
+  line-height: var(--lyric-line-plain-lh);
+  margin-bottom: var(--lyric-line-plain-mb);
+  gap: var(--lyric-line-plain-gap) 0.3em;
 }
 
 /* Subtle "pop" when chords change (transpose up/down/reset). Applied only
@@ -1046,11 +1080,16 @@ html[data-hide-chords="true"] .lyric-line {
   font-size: var(--lyrics-size);
   color: var(--ink);
   font-family: var(--font-lyrics);
-  font-weight: 450;
+  font-weight: 400;
   min-width: 0;
   max-width: 100%;
   overflow-wrap: break-word;
 }
+/* Lyrics style (Settings → Appearance → Lyrics style): font weight for
+   lyric text only — chords, chrome, and everything else are untouched.
+   "Normal" is the 400 above and needs no override. */
+html[data-lyrics-weight="semibold"] .lyric-word { font-weight: 600; }
+html[data-lyrics-weight="bold"] .lyric-word { font-weight: 700; }
 
 .sv-audio { margin-top: 20px; }
 .audio-item { margin-top: 8px; }
@@ -1104,6 +1143,12 @@ html[data-hide-chords="true"] .lyric-line {
   border-top: 1px solid var(--line);
 }
 .settings-section .settings-heading + .settings-row { border-top: none; }
+/* .settings-row sets display:flex unconditionally, which (being an author
+   rule) beats the browser's own [hidden]{display:none} regardless of
+   specificity — so a row that starts hidden (e.g. #dev-options-nav-row,
+   only revealed once Developer options is unlocked) stayed visible. Same
+   fix pattern as .toast[hidden]/.btn-pill-done[hidden] below. */
+.settings-row[hidden] { display: none; }
 .settings-row-text { display: flex; flex-direction: column; min-width: 0; }
 .settings-row-title { font-size: 0.96rem; font-weight: 600; color: var(--ink); }
 .settings-row-sub { font-size: 0.8rem; color: var(--ink-faint); margin-top: 2px; }

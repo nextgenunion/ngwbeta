@@ -121,6 +121,8 @@ const state = {
   chordSize: 0.82,    // rem
   chordStyle: 'chip', // 'chip' | 'text' — see applyChordStyle()
   hideChords: false,  // see applyHideChords()
+  lyricsWeight: 'normal',  // 'normal' | 'semibold' | 'bold' — see applyLyricsWeight()
+  lyricsSpacing: 'normal', // 'tight' | 'normal' | 'loose' — see applyLyricsSpacing()
   lang: 'mn',
   currentPage: 'songs', // mirrors whichever page is currently visible (see showPage)
   playlists: { order: [], byId: {} }, // see "Playlists" section below
@@ -904,6 +906,18 @@ function loadPrefs() {
   state.hideChords = localStorage.getItem('sb-hide-chords') === 'true';
   applyHideChords();
 
+  const savedLyricsWeight = localStorage.getItem('sb-lyrics-weight');
+  if (savedLyricsWeight === 'normal' || savedLyricsWeight === 'semibold' || savedLyricsWeight === 'bold') {
+    state.lyricsWeight = savedLyricsWeight;
+  }
+  applyLyricsWeight();
+
+  const savedLyricsSpacing = localStorage.getItem('sb-lyrics-spacing');
+  if (savedLyricsSpacing === 'tight' || savedLyricsSpacing === 'normal' || savedLyricsSpacing === 'loose') {
+    state.lyricsSpacing = savedLyricsSpacing;
+  }
+  applyLyricsSpacing();
+
   // Restore which song database was active (see applyDbSource()). Reuses
   // the 'sb-db' key/values ('mn'/'en') the dbSelect dropdown itself
   // stores in bindSettings(), so a value saved by an older app version
@@ -939,6 +953,27 @@ function applyHideChords() {
   document.documentElement.setAttribute('data-hide-chords', String(state.hideChords));
   const toggle = document.getElementById('hide-chords-toggle');
   if (toggle) toggle.setAttribute('aria-checked', String(state.hideChords));
+}
+
+// Lyrics style (Settings → Appearance): font weight for lyric text only —
+// see the html[data-lyrics-weight] rules by .lyric-word in style.css.
+// Same attribute-driven segmented-control pattern as applyChordStyle().
+function applyLyricsWeight() {
+  document.documentElement.setAttribute('data-lyrics-weight', state.lyricsWeight);
+  document.querySelectorAll('#lyrics-weight-toggle [data-lyrics-weight]').forEach(btn => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.lyricsWeight === state.lyricsWeight));
+  });
+}
+
+// Line spacing (Settings → Appearance): vertical rhythm between lyric
+// lines only — general app UI spacing is untouched. See the
+// html[data-lyrics-spacing] --lyric-line-* overrides by .lyric-line in
+// style.css. Same attribute-driven segmented-control pattern as above.
+function applyLyricsSpacing() {
+  document.documentElement.setAttribute('data-lyrics-spacing', state.lyricsSpacing);
+  document.querySelectorAll('#lyrics-spacing-toggle [data-lyrics-spacing]').forEach(btn => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.lyricsSpacing === state.lyricsSpacing));
+  });
 }
 
 // Switches which song database (see DB_SOURCES) the Songs page, search,
@@ -1134,6 +1169,16 @@ function applyLanguage() {
     't-chordStyleText': 'chordStyleText',
     't-hideChordsTitle': 'hideChordsTitle',
     't-hideChordsSub': 'hideChordsSub',
+    't-lyricsWeightTitle': 'lyricsWeightTitle',
+    't-lyricsWeightSub': 'lyricsWeightSub',
+    't-lyricsWeightNormal': 'lyricsWeightNormal',
+    't-lyricsWeightSemibold': 'lyricsWeightSemibold',
+    't-lyricsWeightBold': 'lyricsWeightBold',
+    't-lyricsSpacingTitle': 'lyricsSpacingTitle',
+    't-lyricsSpacingSub': 'lyricsSpacingSub',
+    't-lyricsSpacingTight': 'lyricsSpacingTight',
+    't-lyricsSpacingNormal': 'lyricsSpacingNormal',
+    't-lyricsSpacingLoose': 'lyricsSpacingLoose',
     't-settingsTitle': 'settingsTitle',
     't-sectionAppearance': 'sectionAppearance',
     't-darkModeTitle': 'darkModeTitle',
@@ -2904,6 +2949,26 @@ function bindSettings() {
     state.hideChords = !state.hideChords;
     applyHideChords();
     localStorage.setItem('sb-hide-chords', String(state.hideChords));
+  });
+
+  document.querySelectorAll('#lyrics-weight-toggle [data-lyrics-weight]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const weight = btn.dataset.lyricsWeight;
+      if (weight === state.lyricsWeight) return;
+      state.lyricsWeight = weight;
+      applyLyricsWeight();
+      localStorage.setItem('sb-lyrics-weight', state.lyricsWeight);
+    });
+  });
+
+  document.querySelectorAll('#lyrics-spacing-toggle [data-lyrics-spacing]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const spacing = btn.dataset.lyricsSpacing;
+      if (spacing === state.lyricsSpacing) return;
+      state.lyricsSpacing = spacing;
+      applyLyricsSpacing();
+      localStorage.setItem('sb-lyrics-spacing', state.lyricsSpacing);
+    });
   });
 
   const langSelect = document.getElementById('ui-lang-select');

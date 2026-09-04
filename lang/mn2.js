@@ -30,6 +30,18 @@ window.SONGBOOK_LANG.mn2 = {
   chordStyleText: "Текст",
   hideChordsTitle: "Аккорд нуух",
   hideChordsSub: "Аккордгүйгээр зөвхөн үгийг харуулах",
+  // TODO: these ten are placeholder Cyrillic too, same reason as the
+  // chordStyle/hideChords block above — not yet transliterated.
+  lyricsWeightTitle: "Үгийн хэлбэр",
+  lyricsWeightSub: "Дууны үгийн үсгийн зузаан",
+  lyricsWeightNormal: "Энгийн",
+  lyricsWeightSemibold: "Дунд зэрэг тод",
+  lyricsWeightBold: "Тод",
+  lyricsSpacingTitle: "Мөр хоорондын зай",
+  lyricsSpacingSub: "Дууны үгийн мөр хоорондын зай",
+  lyricsSpacingTight: "Нягт",
+  lyricsSpacingNormal: "Энгийн",
+  lyricsSpacingLoose: "Уужим",
   settingsTitle: "ᠲᠣᢈᠢᠷᠠᠭ᠎ᠠ",
   sectionAppearance: "ᠬᠠᠷᠠᠭᠳᠠᠴᠠ",
   darkModeTitle: "ᠬᠠᠷᠠᠩᠬᠤᠢ ᠭᠣᠷᠢᠮ",
