@@ -1395,6 +1395,7 @@ function applyLanguage() {
   document.getElementById('editor-audio').placeholder = t('editorAudioPlaceholder');
   document.getElementById('back-btn').setAttribute('aria-label', t('backAria'));
   document.getElementById('transpose-reset').textContent = t('transposeReset');
+  document.getElementById('editor-save-btn').textContent = t('saveBtn');
 
   document.querySelector('.sort-btn[data-sort-by="alpha"]').textContent = t('sortByAlpha');
   document.querySelector('.sort-btn[data-sort-by="num"]').textContent = t('sortByNumber');

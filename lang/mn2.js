@@ -16,7 +16,7 @@ window.SONGBOOK_LANG.mn2 = {
   songLoadError: "ᠳᠠᠭᠤᠤ ᠨᠤᠭᠤᠳ ᠤ᠋ᠨ ᠵᠢᠭᠰᠠᠭᠠᠯᠲᠠ ᠶ᠋ᠢ ᠠᠴᠢᠶᠠᠯᠠᠵᠤ ᠴᠢᠳᠠᠭᠰᠠᠨ ᠦᢉᠡᠢ᠃ Дараа дахин оролдоно уу.",
   navSongs: "ᠳᠠᠭᠤᠤ ᠨᠤᠭᠤᠳ",
   navSettings: "ᠲᠣᢈᠢᠷᠠᠭ᠎ᠠ",
-  navUserSongs: "Миний дуунууд",
+  navUserSongs: "Миний дуу",
   backAria: "ᠳᠠᠭᠤᠤ ᠨᠤᠭᠤᠳ ᠤ᠋ᠨ ᠵᠢᠭᠰᠠᠭᠠᠯᠲᠠ ᠤᠷᠤᠭᠤ ᠪᠤᠴᠠᠬᠤ",
   keyLabel: "ᠲᠣᠨᠠᠯᠢ:",
   transposeReset: "ᠳᠠᢈᠢᠨ ᠲᠣᢈᠢᠷᠠᠭᠤᠯᠬᠤ",
@@ -96,7 +96,7 @@ window.SONGBOOK_LANG.mn2 = {
   copyrightTerms: "Өмчлөгчийн эрх хамгаалагдсан. Урьдчилан бичгээр зөвшөөрөл авалгүйгээр энэ аппликейшн болон түүний агуулгыг бүхэлд нь эсвэл хэсэгчлэн зөвшөөрөлгүй хуулах, өөрчлөх, дахин түгээхийг хориглоно.",
   // ---- Миний дуунууд + Дуу засварлагч (v3) — Cyrillic fallback, same as
   // Playlists strings above (see file header note / README) ----
-  userSongsTitle: "Миний дуунууд",
+  userSongsTitle: "Миний дуу",
   userSongsEmptyState: "Одоогоор өөрийн дуу алга байна. + дараад эхний дуугаа бичээрэй.",
   newSongTitle: "Шинэ дуу",
   editSongTitle: "Дуу засах",
