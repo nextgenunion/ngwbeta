@@ -76,7 +76,7 @@
   --lyric-line-gap: 4px;
   --lyric-line-mb: 4px;
   --lyric-line-lh: 1.15;
-  --lyric-chord-mb: 3px;   /* gap between a chord tag and its own word below it */
+  --lyric-chord-mb: 2px;   /* gap between a chord tag and its own word below it */
   --lyric-line-plain-lh: 1.5;
   --lyric-line-plain-mb: 10px;
   --lyric-line-plain-gap: 10px;

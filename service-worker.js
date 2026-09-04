@@ -29,6 +29,42 @@ const CACHE_VERSION = self.SONGBOOK_CACHE_VERSION;
 //    re-downloaded on every single version bump.
 const OFFLINE_CACHE = 'songbook-offline-fallback';
 
+// Same idea as OFFLINE_CACHE above, and for the same "must survive a
+// version bump" reason — but for song data instead of the offline page.
+//
+// Bug this fixes: song files (hundreds of small JSON files under data/)
+// used to live in the versioned CACHE_VERSION bucket alongside the app
+// shell. Every version bump's activate() wipes every bucket except the
+// new CACHE_VERSION — so a routine app update was ALSO silently deleting
+// every song file that had already been downloaded, at the exact moment
+// registerServiceWorker()'s controllerchange handler auto-reloads the
+// page to pick up that update. A person on a slow/metered connection who
+// happened to have the app open when an update landed would get the new
+// app shell instantly (tiny, and already downloaded during the update
+// check) but then hit a fully-empty song cache and have to re-download
+// every song file from scratch over that slow connection — looking
+// exactly like "the app reloaded and now the songs won't load" even
+// though their device had a perfectly good copy moments earlier.
+//
+// Keeping song data in its own never-versioned bucket means a version
+// bump only replaces the (small, fast) app-shell files; already-cached
+// songs simply carry over untouched across every update, version after
+// version, the same way OFFLINE_CACHE always has. Song content updates
+// still reach the device — see the fetch handler's stale-while-revalidate
+// below, plus the explicit "Refresh song database" button — just not by
+// blowing away the whole library first.
+const SONGDATA_CACHE = 'songbook-data';
+
+// Whether a request is for song data (manifest.json or a song's own JSON
+// file under any data/<folder>/ — see SONG_DB_FOLDERS below) rather than
+// an app-shell file. Used by the fetch handler and the background
+// precache below to route song requests to SONGDATA_CACHE instead of the
+// versioned CACHE_VERSION bucket — see the comment on SONGDATA_CACHE
+// above for why that split exists.
+function isSongDataRequest(url) {
+  return url.pathname.includes('/data/');
+}
+
 // The core shell: without any one of these the app can't run at all, so
 // these are cached atomically — if even one fails, the whole install fails
 // and the OLD service worker (and its cache) stays in control until a
@@ -114,14 +150,15 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      // Drop every cache bucket except the current version's and the
-      // offline-fallback one — anything else is a stale versioned cache
-      // left over from before an update. OFFLINE_CACHE is deliberately
-      // exempt here even though its name never changes: this cleanup is
-      // about dropping old *versions*, not about deciding what belongs
-      // in the current one, and offline.html isn't part of CACHE_VERSION
-      // at all (see the comment on OFFLINE_CACHE above).
-      Promise.all(keys.filter((k) => k !== CACHE_VERSION && k !== OFFLINE_CACHE).map((k) => caches.delete(k)))
+      // Drop every cache bucket except the current version's and the two
+      // stable, never-versioned buckets — anything else is a stale
+      // versioned cache left over from before an update. OFFLINE_CACHE
+      // and SONGDATA_CACHE are deliberately exempt here even though their
+      // names never change: this cleanup is about dropping old
+      // *versions* of the app shell, not about deciding what belongs in
+      // the current one, and neither of them is part of CACHE_VERSION at
+      // all (see the comments on each above).
+      Promise.all(keys.filter((k) => k !== CACHE_VERSION && k !== OFFLINE_CACHE && k !== SONGDATA_CACHE).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 
@@ -144,6 +181,11 @@ const SONG_DB_FOLDERS = ['mongolian', 'english'];
 function precacheEverythingElseInBackground() {
   caches.open(CACHE_VERSION).then((cache) => {
     cacheBestEffort(cache, BEST_EFFORT_ASSETS);
+  });
+  // Song files go in SONGDATA_CACHE, not CACHE_VERSION — see the comment
+  // on SONGDATA_CACHE up top for why that split matters (in short: so a
+  // later app-version bump doesn't wipe every already-downloaded song).
+  caches.open(SONGDATA_CACHE).then((cache) => {
     SONG_DB_FOLDERS.forEach((folder) => {
       fetch(`./data/${folder}/manifest.json`)
         .then((res) => res.json())
@@ -165,6 +207,17 @@ function precacheEverythingElseInBackground() {
 // offline just silently keeps the existing offline copy instead of ever
 // deleting it — the cache is only ever replaced by data that's confirmed
 // to have loaded successfully, never cleared ahead of time "just in case".
+//
+// Every read/write below goes through targetCacheFor() rather than always
+// using CACHE_VERSION — song-data requests (see isSongDataRequest above)
+// have to land in SONGDATA_CACHE, or a song fetched here (e.g. during
+// app.js's normal per-song loading, not just the background precache)
+// would end up back in the versioned bucket and get wiped by the very
+// next version bump anyway, undoing the fix SONGDATA_CACHE exists for.
+function targetCacheFor(request) {
+  return isSongDataRequest(new URL(request.url)) ? SONGDATA_CACHE : CACHE_VERSION;
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
@@ -174,7 +227,7 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           if (response && response.ok) {
             const clone = response.clone();
-            caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
+            caches.open(targetCacheFor(event.request)).then((cache) => cache.put(event.request, clone));
           }
           return response;
         })
@@ -189,7 +242,7 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           if (response && response.ok) {
             const clone = response.clone();
-            caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
+            caches.open(targetCacheFor(event.request)).then((cache) => cache.put(event.request, clone));
           }
           return response;
         })

@@ -470,7 +470,11 @@ async function fetchSongData(sourceKey, { forceRefresh = false } = {}) {
     // loadSongDataFor()'s IndexedDB-backup fallback below kicks in.
     throw new Error('all song files failed to load');
   }
-  return songs;
+  // hadFailures (some, but not all, files failed) lets loadSongDataFor()
+  // tell "a complete library" apart from "an incomplete one that still
+  // technically succeeded" — e.g. reconnecting partway through a slow
+  // download. See its use there for why that distinction matters.
+  return { songs, hadFailures: failed.length > 0 };
 }
 
 // ---------------------------------------------------------
@@ -556,7 +560,31 @@ async function loadSongsFromIndexedDb(sourceKey) {
 async function loadSongDataFor(sourceKey) {
   const source = state.sources[sourceKey];
   try {
-    source.songs = await fetchSongData(sourceKey);
+    const { songs, hadFailures } = await fetchSongData(sourceKey);
+    if (hadFailures) {
+      // Some (not all) song files failed — most often a slow or spotty
+      // connection dropping partway through the batch (e.g. reconnecting
+      // mid-download after being offline/throttled). fetchSongData()
+      // still "succeeds" in that case since at least some songs came
+      // through, but the result may be a shrunken subset of the real
+      // library rather than an intentionally smaller one. If a previous
+      // successful load already backed up a fuller copy to IndexedDB,
+      // prefer that over silently showing an incomplete songbook.
+      try {
+        const backup = await loadSongsFromIndexedDb(sourceKey);
+        if (backup && backup.length > songs.length) {
+          console.warn(`Songbook: "${sourceKey}" network load was incomplete (${songs.length} song(s)) — using the fuller IndexedDB backup (${backup.length} song(s)) instead.`);
+          source.songs = backup;
+          source.loadFailed = false;
+          return;
+        }
+      } catch (dbErr) {
+        // No usable backup to compare against — fall through and use
+        // the partial network result below; it's still better than
+        // nothing for a first-ever load.
+      }
+    }
+    source.songs = songs;
     saveSongsToIndexedDb(sourceKey, source.songs); // fire-and-forget; don't block on this
     source.loadFailed = false;
   } catch (err) {
@@ -608,7 +636,7 @@ async function reloadSongLibrary() {
 
   const sourceKey = state.activeDbSource;
   try {
-    const songs = await fetchSongData(sourceKey, { forceRefresh: true });
+    const { songs } = await fetchSongData(sourceKey, { forceRefresh: true });
     const source = state.sources[sourceKey];
     source.songs = songs;
     source.loadFailed = false;
