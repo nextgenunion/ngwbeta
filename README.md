@@ -1,14 +1,58 @@
-# Next Gen Worship — Worship Song App (v2.4.0-beta — Playlists, Favorites, Chord Visibility, Hide Chords, Developer Options, English Song Database)
+# Next Gen Worship — Worship Song App (v3.0.0-beta — User Songs, Song Editor)
 
 An offline-first worship songbook PWA. Static HTML/CSS/JS, no build step, no
 backend — built to run on GitHub Pages and install like a native app.
 
-This is **Version 2** of the planning doc's roadmap, building on Version 1
-(official songs, settings, light/dark mode, smart search, chord transpose)
-by adding **Playlists** and a permanent **Favorites** playlist. User Songs
-and Sheet Music are still ahead — see "Built for what's next", below.
+This is **Version 3** of the planning doc's roadmap, building on Version 2
+(Playlists, Favorites) and Version 1 (official songs, settings, light/dark
+mode, smart search, chord transpose) by adding **User Songs** — songs
+written or imported directly on-device — and the **Song Editor** used to
+create and edit them. Sheet Music is still ahead — see "Built for what's
+next", below.
 
 ## What's new in this version
+
+- **User Songs** — a new "User Songs" tab in the bottom navigation, between
+  Songs and Playlists. Its own list, its own search box, and its own **+**
+  button to write a new song from scratch — kept as a fully separate
+  section from the official Songs list rather than a filter on it, per the
+  plan ("Sorting systems are not required because Official Songs and User
+  Songs are separate sections"). Falls back to a plain alphabetical sort —
+  user songs have no song number, so the number badge and "Sort by number"
+  control both stay hidden for this source, the same way they already do
+  for the numberless English database
+- **Song Editor** — a single form (Title, Artist/band, Key, an optional
+  audio link, and a Lyrics & chords textarea) with a **live preview**
+  underneath that renders exactly how the song will actually look once
+  saved. The textarea uses the same `[Am]`-before-syllable chord notation
+  official song data already uses (see "Editing the song list" below) —
+  there's no separate chord-entry UI, and the preview is built by running
+  the textarea's current, unsaved content through the real chord/lyric
+  rendering engine (`renderLyrics()`, now parameterized to accept a
+  container/song/transpose override) rather than a second implementation
+  that could drift out of sync with it
+- Opening a User Song from the list works exactly like opening an official
+  song — same song-view page, same transpose, same "add to playlist," same
+  favorite-heart. The one addition is a **⋮ menu** in the song-view header,
+  shown only for User Songs, with **Edit** (reopens the Song Editor
+  pre-filled) and **Delete** (with a confirmation step)
+- User Songs are saved on-device only (IndexedDB) — there's no server, so
+  this storage *is* the song, not a cache of one. It reuses the same
+  `songbook-db` database and the `user-songs` object store that's been
+  reserved for this since v1 (see "Built for what's next" in the v2 notes),
+  bumped from a fetch-backup role to primary per-song storage — each song
+  is its own key rather than one combined blob, so creating, editing, or
+  deleting one song is a single small write
+- Deleting a User Song that's referenced in a playlist or Favorites doesn't
+  need any special cleanup — playlists already store song references
+  (`{sourceKey, songId}`), never copies of the song data, and already
+  tolerate a reference that no longer resolves (the same handling that
+  covers an official song disappearing from a manifest)
+- Every new interface string ships translated in all four language files
+  (`mn`, `eng`, `kr`, `mn2`) — `mn2` (traditional Mongolian script) follows
+  the same Cyrillic-fallback convention already used there for Playlists
+
+## What's new in v2.4.0-beta (Playlists, Favorites, Chord Visibility, Hide Chords, Developer Options, English Song Database)
 
 - **Playlists** — a new "Playlists" tab in the bottom navigation, between
   Songs and Settings
@@ -197,6 +241,15 @@ number badge next to each song and the "Sort by number" button whenever
 that database is the active one, falling back to alphabetical sort
 instead. Set it to `true` for a database whose songs do have numbers.
 
+**User Songs are deliberately not in `DB_SOURCES`.** Every entry here is a
+`fetch()`-loaded, read-only database shipped with the app; User Songs are
+the opposite — locally authored/imported and read-write, with no
+`manifest.json` or folder of their own (see "What's new in this version"
+above for how they're actually stored). `renderSongList()`/`sortSongs()`
+treat the `'user'` source key as `hasNumbers: false` directly, the same
+outcome as the English database's setting above, without it needing an
+entry in this registry at all.
+
 ## Why song data moved to one JSON file per song
 
 Each song is its own file under its database's folder (e.g.
@@ -314,6 +367,13 @@ optional — a database registered with `hasNumbers: false` (see "Multiple
 song databases" above) can omit it entirely; the app hides the number
 badge and "Sort by number" automatically for that database rather than
 expecting every song everywhere to have one.
+
+This section covers hand-editing the official databases' JSON files
+directly (a developer/content workflow). A person using the app itself
+doesn't touch any of this — as of v3, **User Songs** (the "User Songs" tab
+→ **+**) is an in-app Song Editor using this exact same `[Am]` notation in
+a plain textarea, with a live preview, that saves straight to on-device
+storage — see "What's new in this version" above.
 
 ## Interface language (Mongolian / English)
 
@@ -492,40 +552,47 @@ reloading into a blank/broken page.
 
 ## Built for what's next
 
-Version 1 only ever shows one song list (Songs) and two pages (Songs,
-Settings), but the underlying code doesn't assume that's all there'll ever
-be. Four things were generalized ahead of time specifically so Version 2+
-(User Songs, Playlists, Sheet Music) can be added without reworking existing
-code:
+Versions 1 and 2 only ever showed official songs and playlists, but the
+underlying code was deliberately generalized ahead of time so User Songs
+(v3, now built) could be added without reworking existing code — and the
+same is true again now, for Sheet Music next:
 
 - **Song data (`state.sources`)** — songs live under `state.sources.official`,
-  not a single flat list. Adding a `state.sources.user` entry for User Songs
-  is additive; `renderSongList()`, `matchesQuery()`, `sortSongs()`, and
-  `openSong()` already take a source key as a parameter instead of assuming
-  `official` is the only source.
+  `state.sources.english`, and now `state.sources.user`, not a single flat
+  list. `renderSongList()`, `matchesQuery()`, `sortSongs()`, and
+  `openSong()` all take a source key as a parameter rather than assuming
+  `official` is the only source — User Songs added a fourth source without
+  changing any of their signatures.
 - **Pages (`PAGES` registry in `js/app.js`)** — `showPage()` and `bindNav()`
   read every page's element id, which nav button lights up for it, and
   whether it hides the bottom bar from one `PAGES` object, instead of
-  hardcoded if/else branches. Adding a page (e.g. `user-songs`) means adding
-  one `PAGES` entry, one `<main id="…">`, and one `<button data-nav="…">` —
-  not touching the routing logic itself.
+  hardcoded if/else branches. Adding `user-songs` and `song-editor` meant
+  adding two `PAGES` entries, two `<main id="…">` blocks, and one
+  `<button data-nav="…">` — not touching the routing logic itself.
 - **Offline backup (`SONGDB_STORES` in `js/app.js`)** — the IndexedDB backup
-  already has a reserved `user-songs` object store (unused, empty, until v2
-  starts writing to it), so turning on User Songs won't need another
-  IndexedDB version bump/migration down the line.
+  had a `user-songs` object store reserved since v1 specifically for this;
+  User Songs writes to it directly (see "What's new in this version"
+  above), so turning it on needed no IndexedDB version bump/migration.
 - **Bottom nav (`.bottom-nav-inner` in `css/style.css`)** — the nav buttons
   are laid out with `flex: 1 1 0` + `space-evenly` inside a width-capped
-  inner wrapper, so it distributes cleanly whether there are 2 buttons (now)
-  or 5 (once User Songs, Playlists, and Sheet Music are added) — no gap/width
-  retuning needed.
+  inner wrapper, so it distributed cleanly with the new 4th (User Songs)
+  button — no gap/width retuning needed, and there's still room for a 5th
+  once Sheet Music arrives.
+- **Chord/lyric rendering (`renderLyrics()` in `js/app.js`)** — takes a
+  `containerId`/`song`/`transpose` override (defaulting to the real
+  song-view page/`state.activeSong`/`state.transpose`), so the Song
+  Editor's live preview renders draft, unsaved lyrics through the exact
+  same engine a saved song uses, into its own container, instead of a
+  second implementation.
 
 A few things this does *not* pre-build, on purpose (per the plan's "avoid
-unnecessary complexity early"): there's still only one on-screen song list
-and one song-view page in the DOM — a second page for User Songs still needs
-its own `<main>`, its own nav button, and its own loader (User Songs are
-locally-imported, not `fetch()`-loaded from a manifest like official songs,
-so `fetchSongData()` itself is intentionally left specific to the official
-source rather than generalized to a fetch pattern that wouldn't fit User
-Songs anyway). The song data model also already includes `labels`, `audio`,
-and `sheetMusic` fields so Version 3+ features don't require restructuring
-existing song data.
+unnecessary complexity early"): the Song Editor has no dedicated chord-entry
+UI (chip picker, fretboard, etc.) — it's a plain textarea using the same
+`[Am]` notation the song data itself uses, since that's also exactly what
+someone would need to already know to read "Editing the song list," below.
+There's also no import/export or sharing of User Songs yet, and no way to
+attach `labels` or `sheetMusic` to one from the editor — both fields are
+already present on every saved User Song's data (matching the official
+song data model), so a future labels UI or Sheet Music feature can start
+writing to them without restructuring songs saved today.
+

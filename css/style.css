@@ -1890,3 +1890,95 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
 .modal-search {
   margin-bottom: 4px;
 }
+
+/* =========================================================
+   User Songs + Song Editor (v3)
+   User Songs' own list page (#page-user-songs) reuses .song-list/.song-row/
+   .empty-state/.results-count as-is — see renderSongList()'s listElId/
+   emptyElId/countElId params — so nothing new is needed for those. What
+   follows is only the pieces that ARE new: the editor form itself.
+   ========================================================= */
+
+.editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 4px 0 32px;
+}
+
+.editor-field {
+  display: flex;
+  flex-direction: column;
+}
+.editor-field-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.editor-field-hint {
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+/* .editor-field already stacks label above input; .modal-text-input's own
+   margin-top gives the label→field gap, reused as-is here. */
+
+.editor-field-row {
+  display: flex;
+  gap: 14px;
+}
+.editor-field-row .editor-field { flex: 1; min-width: 0; }
+
+.editor-lyrics-textarea {
+  width: 100%;
+  min-height: 220px;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius-s);
+  padding: 12px 14px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  /* Monospace so bracketed [Chord] markers line up visually with the text
+     they're attached to while typing — matches how this notation is
+     shown throughout the README's own examples. */
+  font-family: var(--font-mono);
+  outline: none;
+  resize: vertical;
+}
+.editor-lyrics-textarea:focus { border-color: var(--accent-strong); }
+
+.editor-preview-section {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+/* .editor-preview sits inside a form that scrolls with the rest of the
+   page, not its own dedicated song-view page, so it doesn't need
+   .lyrics-container's page-edge negative-margin/full-bleed treatment —
+   only the chord/lyric layout rules, which come free from sharing the
+   class. Undoing just the spacing/margin half here. */
+.editor-preview {
+  margin: 10px 0 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--paper-dim);
+  min-height: 60px;
+}
+html[data-theme="dark"] .editor-preview { background: var(--surface); }
+.editor-preview-empty {
+  color: var(--ink-faint);
+  font-size: 0.88rem;
+  font-style: italic;
+}
+
+.editor-delete-btn {
+  align-self: flex-start;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---------- song-view "…" menu (edit/delete a user song) ---------- */
+#sv-menu-btn { flex-shrink: 0; }

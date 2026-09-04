@@ -85,6 +85,35 @@
  </div>
 </main>
 
+<!-- ===== USER SONGS PAGE =====
+     Deliberately its own page/list (not a filter on the Songs page) per
+     the planning doc — "Sorting systems are not required because Official
+     Songs and User Songs are separate sections." Reuses renderSongList()
+     against state.sources.user and this page's own list/empty/count ids
+     (see the listElId/emptyElId/countElId params on renderSongList) rather
+     than a second copy of that function. -->
+<main id="page-user-songs" class="page" data-page="user-songs" hidden>
+ <div class="page-inner">
+  <header class="page-header page-header-row">
+    <h1 id="t-userSongsTitle">User Songs</h1>
+    <button id="new-user-song-btn" class="icon-btn" aria-label="New song">
+      <svg data-icon="plus" viewBox="0 0 24 24"></svg>
+    </button>
+  </header>
+
+  <div class="search-bar">
+    <svg class="search-icon" data-icon="search" viewBox="0 0 24 24" aria-hidden="true"></svg>
+    <input id="user-song-search-input" type="search" inputmode="search" autocomplete="off">
+  </div>
+
+  <p id="user-songs-results-count" class="results-count"></p>
+
+  <ul id="user-song-list" class="song-list"></ul>
+
+  <p id="user-songs-empty-state" class="empty-state" hidden></p>
+ </div>
+</main>
+
 <!-- ===== PLAYLISTS PAGE ===== -->
 <main id="page-playlists" class="page" data-page="playlists" hidden>
  <div class="page-inner">
@@ -153,6 +182,13 @@
     <button id="sv-add-playlist-btn" class="icon-btn" aria-label="Add to playlist">
       <svg data-icon="plus" viewBox="0 0 24 24"></svg>
     </button>
+    <!-- Only shown when the open song came from state.sources.user (see
+         updateSongViewMenuUI()) — official songs aren't editable, so this
+         stays hidden for them rather than showing a menu with nothing
+         useful in it. -->
+    <button id="sv-menu-btn" class="icon-btn" aria-label="Song options" hidden>
+      <svg data-icon="menu-kebab" viewBox="0 0 24 24"></svg>
+    </button>
   </header>
 
   <div class="transpose-bar">
@@ -185,6 +221,71 @@
   <div id="sv-audio" class="sv-audio" hidden></div>
 
   <div id="sv-links" class="sv-links" hidden></div>
+ </div>
+</main>
+
+<!-- ===== SONG EDITOR PAGE =====
+     Shared by both "New song" (state.editorSongId === null) and "Edit
+     song" (state.editorSongId set) — see openSongEditor() in app.js. The
+     lyrics textarea uses the exact same [Am]-before-syllable chord
+     notation as official song data (see README "Editing the song list"),
+     and #editor-preview renders it live through the real renderLyrics()
+     engine (not a second, separate preview implementation), so what's
+     shown here while editing is pixel-identical to how the song will
+     actually look once saved. -->
+<main id="page-song-editor" class="page" data-page="song-editor" hidden>
+ <div class="page-inner">
+  <div class="song-view-topbar">
+    <span id="t-topbarAppName5">Дууны ном</span>
+  </div>
+
+  <header class="song-view-header">
+    <button id="editor-back-btn" class="icon-btn" aria-label="Cancel">
+      <svg data-icon="close" viewBox="0 0 24 24"></svg>
+    </button>
+    <div class="song-view-title">
+      <h2 id="editor-page-title">New song</h2>
+    </div>
+    <button id="editor-save-btn" class="btn-pill-done" aria-label="Save song"></button>
+  </header>
+
+  <div class="editor-form">
+    <label class="editor-field">
+      <span class="editor-field-label" id="t-editorTitleLabel">Title</span>
+      <input type="text" id="editor-title" class="modal-text-input" maxlength="120" autocomplete="off">
+    </label>
+
+    <label class="editor-field">
+      <span class="editor-field-label" id="t-editorArtistLabel">Artist / band</span>
+      <input type="text" id="editor-artist" class="modal-text-input" maxlength="120" autocomplete="off">
+    </label>
+
+    <div class="editor-field-row">
+      <label class="editor-field">
+        <span class="editor-field-label" id="t-editorKeyLabel">Key</span>
+        <input type="text" id="editor-key" class="modal-text-input" maxlength="8" autocomplete="off">
+      </label>
+      <label class="editor-field">
+        <span class="editor-field-label" id="t-editorAudioLabel">Audio link (optional)</span>
+        <input type="url" id="editor-audio" class="modal-text-input" autocomplete="off">
+      </label>
+    </div>
+
+    <label class="editor-field">
+      <span class="editor-field-label" id="t-editorLyricsLabel">Lyrics &amp; chords</span>
+      <span class="editor-field-hint" id="t-editorLyricsHint">
+        Write a chord in brackets right before the syllable it lands on, e.g. [Am]Oh Holy [G]Amazing God we pray. Leave a blank line between verses/choruses.
+      </span>
+      <textarea id="editor-lyrics" class="editor-lyrics-textarea" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+    </label>
+
+    <div class="editor-preview-section">
+      <span class="editor-field-label" id="t-editorPreviewLabel">Preview</span>
+      <div id="editor-preview" class="lyrics-container editor-preview"></div>
+    </div>
+
+    <button type="button" id="editor-delete-btn" class="btn-secondary editor-delete-btn" hidden></button>
+  </div>
  </div>
 </main>
 
@@ -478,6 +579,10 @@
   <button class="nav-btn is-active" data-nav="songs">
     <svg data-icon="nav-songs" viewBox="0 0 24 24"></svg>
     <span id="t-navSongs">Songs</span>
+  </button>
+  <button class="nav-btn" data-nav="user-songs">
+    <svg data-icon="nav-user-songs" viewBox="0 0 24 24"></svg>
+    <span id="t-navUserSongs">User Songs</span>
   </button>
   <button class="nav-btn" data-nav="playlists">
     <svg data-icon="nav-playlist" viewBox="0 0 24 24"></svg>

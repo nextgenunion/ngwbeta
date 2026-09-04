@@ -102,6 +102,11 @@ const state = {
   sources: {
     official: { songs: [], loadFailed: false },
     english: { songs: [], loadFailed: false },
+    // User Songs (v3): not fetched from a manifest like official/english —
+    // loaded from IndexedDB via UserSongStorage (see loadUserSongs()) —
+    // but shaped identically otherwise, so every list/search/sort/song-view
+    // function below works against it with no source-specific branches.
+    user: { songs: [], loadFailed: false },
   },
   // Which entry in `sources` (and which folder under data/) the Songs
   // page, search, sort, and the playlist song-picker all currently browse.
@@ -114,8 +119,16 @@ const state = {
   sortBy: 'num',       // 'alpha' | 'num'
   sortOrder: 'asc',     // 'asc' | 'desc'
   query: '',
+  userSongQuery: '', // User Songs page's own search box — kept separate
+                      // from `query` (the Songs page's) so switching tabs
+                      // doesn't clobber whichever search the person was
+                      // mid-typing on the other page.
   activeSong: null,
   activeSourceKey: 'official', // which source the open song view came from
+  editorSongId: null, // set while the editor is open for an EXISTING user
+                       // song (its id); null means "New song" — see
+                       // openSongEditor(). Read by saveSongFromEditor() to
+                       // decide insert vs update.
   transpose: 0,
   lyricsSize: 1.05,   // rem
   chordSize: 0.82,    // rem
@@ -172,6 +185,8 @@ const state = {
 const PAGES = {
   'songs':          { elId: 'page-songs',          navKey: 'songs',     rememberScroll: true },
   'song-view':      { elId: 'page-song-view',      navKey: 'songs',     rememberScroll: false, hideNav: true },
+  'user-songs':     { elId: 'page-user-songs',      navKey: 'user-songs', rememberScroll: true, onEnter: () => renderUserSongList() },
+  'song-editor':    { elId: 'page-song-editor',    navKey: 'user-songs', rememberScroll: false, hideNav: true },
   'playlists':      { elId: 'page-playlists',      navKey: 'playlists', rememberScroll: true,  onEnter: () => renderPlaylistsList() },
   'playlist-view':  { elId: 'page-playlist-view',  navKey: 'playlists', rememberScroll: false, hideNav: true },
   'settings':       { elId: 'page-settings',       navKey: 'settings',  rememberScroll: true,  onEnter: () => resetContactUI() },
@@ -188,7 +203,7 @@ const PAGES = {
 // being a sibling tab you switch between. These get the slide push/pop
 // transition in showPage(); tab switches (Songs/Playlists/Settings) stay
 // an instant cut, same as before.
-const SLIDE_PAGES = new Set(['song-view', 'playlist-view', 'about', 'dev-options']);
+const SLIDE_PAGES = new Set(['song-view', 'playlist-view', 'about', 'dev-options', 'song-editor']);
 
 // Remembers each rememberScroll page's scroll position (each .page
 // element's own scrollTop — see the CSS notes on .page for why it's no
@@ -225,6 +240,7 @@ const ICON_FILES = {
   'contact-mail': 'icons/svg/mail-contact.svg',
   'copy': 'icons/svg/copy.svg',
   'nav-songs': 'icons/svg/nav-songs-bookmark.svg',
+  'nav-user-songs': 'icons/svg/nav-user-songs.svg',
   'nav-settings': 'icons/svg/nav-settings-gear.svg',
   'nav-playlist': 'icons/svg/nav-playlist.svg',
   'heart-outline': 'icons/svg/heart-outline.svg',
@@ -364,6 +380,8 @@ async function init() {
   safe('bindNav', bindNav);
   safe('bindSongsPage', bindSongsPage);
   safe('bindSongView', bindSongView);
+  safe('bindUserSongsPage', bindUserSongsPage);
+  safe('bindSongEditor', bindSongEditor);
   safe('bindPlaylistsPage', bindPlaylistsPage);
   safe('bindPlaylistView', bindPlaylistView);
   safe('bindModalShell', bindModalShell);
@@ -379,7 +397,7 @@ async function init() {
   safe('initDevOptions', initDevOptions);
   requestPersistentStorage(); // fire-and-forget; never block startup on this
 
-  await Promise.all([loadAllSongData(), loadPlaylists()]);
+  await Promise.all([loadAllSongData(), loadPlaylists(), loadUserSongs()]);
   safe('applyLanguage (post-load)', applyLanguage); // re-run so the results count reflects the loaded songs
 }
 
@@ -492,6 +510,15 @@ const SONGDB_NAME = 'songbook-db';
 // only create stores that don't already exist, so each of these upgrades
 // is additive for already-installed devices — their existing official-
 // songs backup is untouched.
+//
+// 'user-songs' specifically is used differently from 'songs'/'english-
+// songs': those two are a fetch() backup (one blob under the 'all-songs'
+// key — see saveSongsToIndexedDb/loadSongsFromIndexedDb below). User Songs
+// have no network source to fall back FROM — this store IS their only
+// copy — so UserSongStorage (see "User Songs" section further down) reads
+// and writes it directly, one song per key (its own id), instead of one
+// combined blob. Same store, same reserved slot from v1, different access
+// pattern for a different job.
 const SONGDB_VERSION = 3;
 // One object store per song source (see state.sources/DB_SOURCES above),
 // so each source's offline backup lives independently and nothing
@@ -616,6 +643,101 @@ async function loadSongDataFor(sourceKey) {
 // broken, or slow never blocks or fails the Mongolian one, or vice versa.
 async function loadAllSongData() {
   await Promise.all(Object.keys(DB_SOURCES).map(loadSongDataFor));
+}
+
+// ---------------------------------------------------------
+// User Songs (v3): locally-authored/imported songs, stored on-device only
+// — there's no server, so this store IS the song, not a cache of one.
+// Reuses the same songbook-db database and its reserved 'user-songs'
+// object store (see the comment above SONGDB_VERSION), but unlike the
+// fetch-backup stores, each song is its own key (its `id`) rather than one
+// combined 'all-songs' blob — so adding/editing/deleting one song is a
+// single small write, not a read-modify-write of the entire list.
+//
+// state.sources.user.songs is the in-memory mirror renderSongList() etc.
+// read from; every mutator below updates both IndexedDB and that array
+// together so the UI never needs a separate reload to see its own change.
+// ---------------------------------------------------------
+const UserSongStorage = {
+  async _store(mode) {
+    const db = await openSongDb();
+    return db.transaction(SONGDB_STORES.user, mode).objectStore(SONGDB_STORES.user);
+  },
+  async loadAll() {
+    const db = await openSongDb();
+    const songs = await new Promise((resolve, reject) => {
+      const tx = db.transaction(SONGDB_STORES.user, 'readonly');
+      const store = tx.objectStore(SONGDB_STORES.user);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return songs;
+  },
+  async put(song) {
+    const db = await openSongDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(SONGDB_STORES.user, 'readwrite');
+      tx.objectStore(SONGDB_STORES.user).put(song, song.id);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  },
+  async remove(id) {
+    const db = await openSongDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(SONGDB_STORES.user, 'readwrite');
+      tx.objectStore(SONGDB_STORES.user).delete(id);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  },
+};
+
+function genUserSongId() {
+  return 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// Loaded once at startup (see init()) alongside loadAllSongData()/
+// loadPlaylists() — a failure here just leaves User Songs empty (with
+// state.sources.user.loadFailed set so renderSongList() shows the same
+// "couldn't load" row it already knows how to show for official/English),
+// never blocks the rest of the app from starting.
+async function loadUserSongs() {
+  try {
+    state.sources.user.songs = await UserSongStorage.loadAll();
+    state.sources.user.loadFailed = false;
+  } catch (err) {
+    console.error('Songbook: failed to load user songs from IndexedDB —', err);
+    state.sources.user.songs = [];
+    state.sources.user.loadFailed = true;
+  }
+}
+
+// Inserts or updates one song (id decides which — an id already present in
+// state.sources.user.songs is an update, otherwise it's an insert) in both
+// IndexedDB and the in-memory list, keeping them in lockstep.
+async function saveUserSong(song) {
+  const list = state.sources.user.songs;
+  const idx = list.findIndex(s => s.id === song.id);
+  if (idx === -1) list.push(song);
+  else list[idx] = song;
+  await UserSongStorage.put(song);
+}
+
+async function deleteUserSong(id) {
+  state.sources.user.songs = state.sources.user.songs.filter(s => s.id !== id);
+  await UserSongStorage.remove(id);
+  // A song can be referenced from playlists/Favorites by {sourceKey:
+  // 'user', songId} — same reasoning as official songs (playlists never
+  // duplicate song data, only ids), so deleting the song here doesn't
+  // touch playlists directly. findSongByRef() simply stops resolving it,
+  // and renderPlaylistView()/renderPlaylistsList() already tolerate a ref
+  // that no longer resolves to a song (see their own null-checks) — same
+  // as if an official song were ever removed from a manifest.
 }
 
 // Manual "Refresh song database" button: asks the service worker to try the
@@ -787,6 +909,13 @@ function initHistoryNav() {
           openPlaylist(st.playlistId, { pushHistory: false });
           return;
         }
+      }
+      if (st.page === 'song-editor') {
+        // editorSongId may be null (a "New song" form back/forward-ed to)
+        // — that's a valid state to land back on as-is, same blank form.
+        const song = st.editorSongId ? findSongByRef('user', st.editorSongId) : null;
+        openSongEditor(song, { pushHistory: false });
+        return;
       }
       showPage(st.page, { pushHistory: false });
       return;
@@ -1182,12 +1311,26 @@ function applyLanguage() {
     // context it was opened from, so it reuses settingsTitle rather than
     // repeating "Developer options" (already said via t-sectionDevOptions2).
     't-topbarAppName4': 'settingsTitle',
+    // The Song Editor's topbar sits above the User Songs context it was
+    // opened from (same pattern as the two above), so it uses
+    // userSongsTitle rather than repeating "New song"/"Edit song" — the
+    // page's own header already says that via editor-page-title.
+    't-topbarAppName5': 'userSongsTitle',
     't-navSongs': 'navSongs',
     't-navSettings': 'navSettings',
     't-navPlaylists': 'navPlaylists',
+    't-navUserSongs': 'navUserSongs',
+    't-userSongsTitle': 'userSongsTitle',
     't-playlistsTitle': 'playlistsTitle',
     't-playlistsBackupTitle': 'playlistsBackupTitle',
     't-playlistsBackupSub': 'playlistsBackupSub',
+    't-editorTitleLabel': 'editorTitleLabel',
+    't-editorArtistLabel': 'editorArtistLabel',
+    't-editorKeyLabel': 'editorKeyLabel',
+    't-editorAudioLabel': 'editorAudioLabel',
+    't-editorLyricsLabel': 'editorLyricsLabel',
+    't-editorLyricsHint': 'editorLyricsHint',
+    't-editorPreviewLabel': 'editorPreviewLabel',
     't-keyLabel': 'keyLabel',
     't-lyricsGroup': 'lyricsGroup',
     't-chordsGroup': 'chordsGroup',
@@ -1247,6 +1390,9 @@ function applyLanguage() {
   });
 
   document.getElementById('search-input').placeholder = t('searchPlaceholder');
+  document.getElementById('user-song-search-input').placeholder = t('searchPlaceholder');
+  document.getElementById('editor-key').placeholder = t('editorKeyPlaceholder');
+  document.getElementById('editor-audio').placeholder = t('editorAudioPlaceholder');
   document.getElementById('back-btn').setAttribute('aria-label', t('backAria'));
   document.getElementById('transpose-reset').textContent = t('transposeReset');
 
@@ -1288,11 +1434,12 @@ function applyLanguage() {
 
   refreshInstallLabels();
   renderSongList();
+  if (state.currentPage === 'user-songs') renderUserSongList();
   if (state.activeSong) updateTransposeUI();
   if (state.currentPage === 'playlists') renderPlaylistsList();
   updateSabbathMascotText(); // re-translate the mascot's bubble if it's showing
   if (state.currentPage === 'playlist-view') renderPlaylistView();
-  if (state.activeSong) updateFavoriteButtonUI();
+  if (state.activeSong) { updateFavoriteButtonUI(); updateSongViewMenuUI(); }
 }
 
 // ---------------------------------------------------------
@@ -1517,6 +1664,37 @@ function bindSongsPage() {
   });
 }
 
+// ---------------------------------------------------------
+// User Songs page: its own list, search, and "+ New song" entry point.
+// Deliberately no sort controls (see the planning doc: "Sorting systems
+// are not required because Official Songs and User Songs are separate
+// sections") — renderSongList() falls back to alphabetical for this
+// source on its own (see its hasNumbers note), so there's nothing this
+// page needs to drive that itself.
+// ---------------------------------------------------------
+function bindUserSongsPage() {
+  const input = document.getElementById('user-song-search-input');
+  input.addEventListener('input', () => {
+    state.userSongQuery = input.value.trim().toLowerCase();
+    renderUserSongList();
+  });
+
+  document.getElementById('new-user-song-btn').addEventListener('click', () => {
+    openSongEditor(null);
+  });
+}
+
+function renderUserSongList() {
+  renderSongList({
+    sourceKey: 'user',
+    listElId: 'user-song-list',
+    emptyElId: 'user-songs-empty-state',
+    countElId: 'user-songs-results-count',
+    query: state.userSongQuery,
+  });
+  document.getElementById('user-songs-empty-state').textContent = t('userSongsEmptyState');
+}
+
 function stripChords(lyricsArr) {
   return lyricsArr.join(' \n ').replace(/\[[^\]]+\]/g, '');
 }
@@ -1569,7 +1747,9 @@ function sortSongs(list, q, sourceKey = state.activeDbSource) {
   const arr = [...list];
   const dir = state.sortOrder === 'desc' ? -1 : 1;
   const query = (q || '').trim();
-  const hasNumbers = (DB_SOURCES[sourceKey] || {}).hasNumbers !== false;
+  // Same "user songs aren't in DB_SOURCES" reasoning as renderSongList's
+  // own hasNumbers — see the comment there.
+  const hasNumbers = sourceKey === 'user' ? false : (DB_SOURCES[sourceKey] || {}).hasNumbers !== false;
 
   arr.sort((a, b) => {
     if (query) {
@@ -1604,12 +1784,20 @@ function escapeHtml(str) {
 // tracks that choice with no per-call-site plumbing. listElId/emptyElId/
 // countElId let a future second list page (e.g. User Songs) reuse this
 // same function against its own DOM ids instead of needing its own copy.
+// sourceKey/listElId/emptyElId/countElId let a second list page (User
+// Songs) reuse this same function against its own DOM ids instead of
+// needing its own copy (see bindUserSongsPage/renderUserSongList). query
+// likewise defaults to state.query (the Songs page's own search box) but
+// can be overridden — User Songs keeps its search text in the separate
+// state.userSongQuery instead, so switching tabs never clobbers whichever
+// box the person was mid-typing in on the other page.
 function renderSongList(opts = {}) {
   const {
     sourceKey = state.activeDbSource,
     listElId = 'song-list',
     emptyElId = 'empty-state',
     countElId = 'results-count',
+    query = state.query,
   } = opts;
 
   const source = state.sources[sourceKey];
@@ -1624,7 +1812,7 @@ function renderSongList(opts = {}) {
     return;
   }
 
-  const filtered = sortSongs(source.songs.filter(s => matchesQuery(s, state.query)), state.query, sourceKey);
+  const filtered = sortSongs(source.songs.filter(s => matchesQuery(s, query)), query, sourceKey);
 
   countEl.textContent = filtered.length === source.songs.length
     ? t('resultsAll', filtered.length)
@@ -1635,10 +1823,15 @@ function renderSongList(opts = {}) {
 
   // Some sources' songs have no `number` field at all (see DB_SOURCES'
   // hasNumbers) — the badge that normally shows it is dropped instead of
-  // rendering "undefined" for those.
-  const hasNumbers = (DB_SOURCES[sourceKey] || {}).hasNumbers !== false;
+  // rendering "undefined" for those. User Songs aren't in DB_SOURCES at
+  // all (they're not a fetched database — see state.sources.user's own
+  // comment), so they're treated the same as an explicit hasNumbers:
+  // false rather than falling through to DB_SOURCES' "unknown key means
+  // true" default, which would try to show a number none of these songs
+  // actually have.
+  const hasNumbers = sourceKey === 'user' ? false : (DB_SOURCES[sourceKey] || {}).hasNumbers !== false;
 
-  const q = state.query;
+  const q = query;
   filtered.forEach(song => {
     const li = document.createElement('li');
     const row = document.createElement('button');
@@ -1703,6 +1896,64 @@ function bindSongView() {
     if (!song) return;
     openAddToPlaylistModal(state.activeSourceKey, song.id);
   });
+
+  document.getElementById('sv-menu-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleSongViewMenu();
+  });
+  document.addEventListener('click', () => closeSongViewMenu());
+}
+
+// Shows/hides the "…" menu button itself (edit/delete only make sense for
+// a song the person actually authored) — called from openSong() every
+// time a song opens, and again from applyLanguage() so a language switch
+// doesn't leave a stale menu open across a source it's no longer valid for.
+function updateSongViewMenuUI() {
+  const btn = document.getElementById('sv-menu-btn');
+  if (!btn) return;
+  btn.hidden = state.activeSourceKey !== 'user';
+  closeSongViewMenu();
+}
+
+let songViewMenuOpen = false;
+function toggleSongViewMenu() {
+  songViewMenuOpen ? closeSongViewMenu() : openSongViewMenu();
+}
+
+function openSongViewMenu() {
+  const song = state.activeSong;
+  if (!song || state.activeSourceKey !== 'user') return;
+  closeSongViewMenu();
+  const btn = document.getElementById('sv-menu-btn');
+  const wrap = document.createElement('div');
+  wrap.className = 'kebab-dropdown';
+  wrap.id = 'sv-kebab-dropdown';
+  wrap.innerHTML = `
+    <button type="button" id="sv-kebab-edit"><svg data-icon="pencil" viewBox="0 0 24 24"></svg>${escapeHtml(t('editBtn'))}</button>
+    <button type="button" id="sv-kebab-delete" class="is-danger"><svg data-icon="trash" viewBox="0 0 24 24"></svg>${escapeHtml(t('menuDelete'))}</button>
+  `;
+  btn.parentElement.style.position = 'relative';
+  btn.parentElement.appendChild(wrap);
+  initIcons(wrap);
+  songViewMenuOpen = true;
+
+  wrap.querySelector('#sv-kebab-edit').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeSongViewMenu();
+    openSongEditor(song);
+  });
+  wrap.querySelector('#sv-kebab-delete').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeSongViewMenu();
+    confirmDeleteUserSong(song);
+  });
+  wrap.addEventListener('click', (e) => e.stopPropagation());
+}
+
+function closeSongViewMenu() {
+  const wrap = document.getElementById('sv-kebab-dropdown');
+  if (wrap) wrap.remove();
+  songViewMenuOpen = false;
 }
 
 function updateFavoriteButtonUI() {
@@ -1819,6 +2070,7 @@ function openSong(song, opts = {}) {
 
   updateTransposeUI();
   updateFavoriteButtonUI();
+  updateSongViewMenuUI();
   showPage('song-view', { resetScroll: true });
   if (pushHistory) {
     pushNavState({ page: 'song-view', songId: song.id, sourceKey });
@@ -1858,10 +2110,23 @@ function transposeSingle(token, steps) {
   return table[newIdx] + rest;
 }
 
+// containerId/song/transpose default to the real song-view page (its
+// container id, state.activeSong, state.transpose) so every existing call
+// site keeps working unchanged. The song editor's live preview (see
+// renderEditorPreview()) overrides all three to render a draft song's
+// lyrics — built from the same textarea the person is actively typing
+// into, not yet saved anywhere — into its own #editor-preview container
+// instead, through this exact same chord/lyric engine rather than a
+// second, separate implementation that could drift out of sync with how
+// a saved song actually renders.
 function renderLyrics(opts = {}) {
-  const { animateChords = false } = opts;
-  const container = document.getElementById('lyrics-container');
-  const song = state.activeSong;
+  const {
+    animateChords = false,
+    containerId = 'lyrics-container',
+    song = state.activeSong,
+    transpose = state.transpose,
+  } = opts;
+  const container = document.getElementById(containerId);
   container.innerHTML = '';
   if (!song) return;
 
@@ -2007,7 +2272,7 @@ function renderLyrics(opts = {}) {
           if (piece.chord) {
             const chordEl = document.createElement('span');
             chordEl.className = 'chord-tag';
-            chordEl.textContent = transposeChord(piece.chord, state.transpose);
+            chordEl.textContent = transposeChord(piece.chord, transpose);
             if (animateChords) {
               chordEl.classList.add('chord-pop');
               chordEl.style.setProperty('--chord-pop-delay', Math.min(chordAnimIndex * 12, 380) + 'ms');
@@ -2033,6 +2298,166 @@ function renderLyrics(opts = {}) {
 
     container.appendChild(sectionEl);
   });
+}
+
+// ---------------------------------------------------------
+// Song editor (v3): shared by both "New song" and "Edit song" (see
+// state.editorSongId). Parses the same [Am]-before-syllable notation
+// official songs use straight out of a plain textarea — no separate
+// chord-entry UI — and previews it live through the real renderLyrics()
+// engine, so what's shown while editing is exactly how the song will
+// look once saved (see renderLyrics()'s containerId/song/transpose
+// params, added specifically so this could reuse it as-is).
+// ---------------------------------------------------------
+function bindSongEditor() {
+  document.getElementById('editor-back-btn').addEventListener('click', () => history.back());
+  document.getElementById('editor-save-btn').addEventListener('click', saveSongFromEditor);
+  document.getElementById('editor-lyrics').addEventListener('input', renderEditorPreview);
+  document.getElementById('editor-delete-btn').addEventListener('click', () => {
+    const song = findSongByRef('user', state.editorSongId);
+    if (song) confirmDeleteUserSong(song, { fromEditor: true });
+  });
+}
+
+// song: null opens a blank "New song" form; an existing user-song object
+// opens it pre-filled for editing. Always navigates via showPage (pushing
+// history), same as openSong/openPlaylist, so the hardware/gesture back
+// button leaves the editor the same way it leaves anywhere else in the app.
+function openSongEditor(song, opts = {}) {
+  const { pushHistory = true } = opts;
+  state.editorSongId = song ? song.id : null;
+
+  document.getElementById('editor-page-title').textContent =
+    song ? t('editSongTitle') : t('newSongTitle');
+  document.getElementById('editor-title').value = song ? song.title || '' : '';
+  document.getElementById('editor-artist').value = song ? song.artist || '' : '';
+  document.getElementById('editor-key').value = song ? song.key || '' : '';
+  document.getElementById('editor-audio').value =
+    (song && song.audio && song.audio[0] && song.audio[0].url) || '';
+  document.getElementById('editor-lyrics').value = song ? (song.lyrics || []).join('\n') : '';
+
+  document.getElementById('editor-delete-btn').hidden = !song;
+  document.getElementById('editor-delete-btn').textContent = t('deleteSongBtn');
+
+  renderEditorPreview();
+  showPage('song-editor', { resetScroll: true });
+  if (pushHistory) {
+    pushNavState({ page: 'song-editor', editorSongId: state.editorSongId });
+  }
+}
+
+// Renders the textarea's CURRENT (unsaved) content through the same
+// renderLyrics() engine a real song view uses, into #editor-preview
+// instead of #lyrics-container — see renderLyrics()'s containerId param.
+// Runs on every keystroke (see bindSongEditor's input listener), so chord
+// placement is visibly correct before the person ever taps Save.
+function renderEditorPreview() {
+  const raw = document.getElementById('editor-lyrics').value;
+  const lyrics = raw.split('\n');
+  const hasContent = raw.trim() !== '';
+  const previewEl = document.getElementById('editor-preview');
+
+  if (!hasContent) {
+    previewEl.innerHTML = `<p class="editor-preview-empty">${escapeHtml(t('editorPreviewEmpty'))}</p>`;
+    return;
+  }
+
+  renderLyrics({
+    containerId: 'editor-preview',
+    song: { lyrics },
+    transpose: 0, // preview always shows the song's own written key — transposing is a song-view-only control
+  });
+}
+
+function saveSongFromEditor() {
+  const title = document.getElementById('editor-title').value.trim();
+  if (!title) {
+    showToast(t('toastSongTitleRequired'));
+    document.getElementById('editor-title').focus();
+    return;
+  }
+
+  const artist = document.getElementById('editor-artist').value.trim();
+  const key = document.getElementById('editor-key').value.trim();
+  const audioUrl = document.getElementById('editor-audio').value.trim();
+  const lyrics = document.getElementById('editor-lyrics').value.split('\n');
+
+  const existing = state.editorSongId ? findSongByRef('user', state.editorSongId) : null;
+  const song = {
+    id: existing ? existing.id : genUserSongId(),
+    title,
+    artist: artist || undefined,
+    key: key || undefined,
+    lyrics,
+    audio: audioUrl ? [{ url: audioUrl, label: t('listenLink') }] : [],
+    // labels/sheetMusic are wired into the data model now (matching how
+    // official songs already carry these fields — see README's "Song data
+    // structure") so v3.5's label UI can start writing here without any
+    // schema change to songs saved today.
+    labels: existing ? existing.labels || [] : [],
+    sheetMusic: existing ? existing.sheetMusic || [] : [],
+  };
+
+  saveUserSong(song).then(() => {
+    showToast(existing ? t('toastSongUpdated') : t('toastSongCreated'));
+    if (state.currentPage === 'user-songs') renderUserSongList();
+    // Whatever page this editor was opened from (the User Songs list, or
+    // song-view via the kebab menu) is one history entry back — its
+    // popstate handler re-resolves the song by id from
+    // state.sources.user.songs (see initHistoryNav's song-view branch),
+    // which saveUserSong() above already updated in place, so backing out
+    // shows the edit immediately with no separate refresh call needed here.
+    history.back();
+  }).catch(err => {
+    console.error('Songbook: failed to save user song —', err);
+    showToast(t('toastSongSaveFailed'));
+  });
+}
+
+function confirmDeleteUserSong(song, opts = {}) {
+  const { fromEditor = false } = opts;
+  const wrap = document.createElement('div');
+  const p = document.createElement('p');
+  p.className = 'modal-hint';
+  p.style.marginTop = '0';
+  p.textContent = t('deleteSongConfirm', song.title);
+  const actions = document.createElement('div');
+  actions.className = 'modal-actions';
+  actions.innerHTML = `
+    <button type="button" class="btn-secondary" id="delete-song-cancel"></button>
+    <button type="button" class="btn-primary" id="delete-song-confirm" style="background:var(--danger)"></button>
+  `;
+  wrap.appendChild(p);
+  wrap.appendChild(actions);
+  actions.querySelector('#delete-song-cancel').textContent = t('cancelBtn');
+  actions.querySelector('#delete-song-confirm').textContent = t('deleteBtn');
+
+  actions.querySelector('#delete-song-cancel').addEventListener('click', closeModal);
+  actions.querySelector('#delete-song-confirm').addEventListener('click', () => {
+    closeModal();
+    // Decide how many history entries to pop BEFORE deleting/navigating —
+    // once the song is gone, state.currentPage will have changed by the
+    // time any of this runs async, so this can't be figured out after the
+    // fact. Two cases need two pops, not one: deleting from the editor
+    // when it was opened from this exact song's song-view (editor sits on
+    // top of a song-view that also has nothing left to show once the song
+    // is gone), and deleting from song-view's own kebab menu never has an
+    // editor above it, so needs just one.
+    const wasOnEditorOverSongView =
+      fromEditor && state.activeSong && state.activeSourceKey === 'user' && state.activeSong.id === song.id;
+    const popCount = wasOnEditorOverSongView ? 2 : (state.currentPage === 'song-editor' || state.currentPage === 'song-view') ? 1 : 0;
+
+    deleteUserSong(song.id).then(() => {
+      showToast(t('toastSongDeleted'));
+      if (state.currentPage === 'user-songs') renderUserSongList();
+      for (let i = 0; i < popCount; i++) history.back();
+    }).catch(err => {
+      console.error('Songbook: failed to delete user song —', err);
+      showToast(t('toastSongSaveFailed'));
+    });
+  });
+
+  openModal(t('deleteSongTitle'), wrap);
 }
 
 // ---------------------------------------------------------
