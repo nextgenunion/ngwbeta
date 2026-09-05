@@ -1417,7 +1417,7 @@ function applyLanguage() {
     't-editorTitleLabel': 'editorTitleLabel',
     't-editorArtistLabel': 'editorArtistLabel',
     't-editorKeyLabel': 'editorKeyLabel',
-    't-editorAudioLabel': 'editorAudioLabel',
+    't-editorLinkLabel': 'editorLinkLabel',
     't-editorLyricsLabel': 'editorLyricsLabel',
     't-editorLyricsHint': 'editorLyricsHint',
     't-editorPreviewLabel': 'editorPreviewLabel',
@@ -1484,7 +1484,7 @@ function applyLanguage() {
   document.getElementById('search-input').placeholder = t('searchPlaceholder');
   document.getElementById('user-song-search-input').placeholder = t('searchPlaceholder');
   document.getElementById('editor-key').placeholder = t('editorKeyPlaceholder');
-  document.getElementById('editor-audio').placeholder = t('editorAudioPlaceholder');
+  document.getElementById('editor-link').placeholder = t('editorLinkPlaceholder');
   document.getElementById('back-btn').setAttribute('aria-label', t('backAria'));
   document.getElementById('transpose-reset').textContent = t('transposeReset');
   document.getElementById('editor-save-btn').textContent = t('saveBtn');
@@ -2352,9 +2352,14 @@ function transposeChord(chord, steps) {
 }
 
 function transposeSingle(token, steps) {
-  const m = token.match(/^([A-G])(#|b)?(.*)$/);
+  // Leading/trailing whitespace inside a bracket — "[ Cm ]" instead of
+  // "[Cm]" — is harmless to render but broke transposition entirely: the
+  // old regex required the root letter at position 0, so a padded token
+  // never matched and was silently returned unchanged. Capture and
+  // preserve that padding instead of requiring its absence.
+  const m = token.match(/^(\s*)([A-G])(#|b)?(.*?)(\s*)$/);
   if (!m) return token;
-  const [, letter, accidental, rest] = m;
+  const [, lead, letter, accidental, rest, trail] = m;
   const useFlats = FLAT_KEYS.has(letter + (accidental || '') + (rest.startsWith('m') ? 'm' : ''));
   const name = letter + (accidental || '');
   let idx = CHROMATIC_SHARP.indexOf(name);
@@ -2362,7 +2367,7 @@ function transposeSingle(token, steps) {
   if (idx === -1) return token;
   const newIdx = ((idx + steps) % 12 + 12) % 12;
   const table = useFlats ? CHROMATIC_FLAT : CHROMATIC_SHARP;
-  return table[newIdx] + rest;
+  return lead + table[newIdx] + rest + trail;
 }
 
 // containerId/song/transpose default to the real song-view page (its
@@ -2428,12 +2433,22 @@ function renderLyrics(opts = {}) {
     const labelMatch = firstLineTrimmed.match(/^([^\d\[\]:]+):(.*)$/);
     const sectionLabel = labelMatch ? labelMatch[1].trim() : null;
 
+    // A section made up of nothing but [Chord] markers — no actual sung
+    // words anywhere in it — isn't a "part" in the verse/chorus sense, so
+    // it shouldn't claim a numbered badge of its own. Without this check,
+    // a blank-line-separated run of bare chord lines (an instrumental
+    // interlude, or the degenerate one-chord-per-line case) gets numbered
+    // as if each were its own verse, badging every single line.
+    const hasLyricText = sectionLines.some(
+      line => line.replace(/\[[^\]]+\]/g, '').trim() !== ''
+    );
+
     if (sectionLabel) {
       const numEl = document.createElement('div');
       numEl.className = 'lyric-section-number';
       numEl.textContent = sectionLabel;
       sectionEl.appendChild(numEl);
-    } else if (numberParts) {
+    } else if (numberParts && hasLyricText) {
       const numEl = document.createElement('div');
       numEl.className = 'lyric-section-number';
       numEl.textContent = String(sectionIdx + 1);
@@ -2587,7 +2602,11 @@ function openSongEditor(song, opts = {}) {
   document.getElementById('editor-title').value = song ? song.title || '' : '';
   document.getElementById('editor-artist').value = song ? song.artist || '' : '';
   document.getElementById('editor-key').value = song ? song.key || '' : '';
-  document.getElementById('editor-audio').value =
+  // Prefer the new `links` field; fall back to a legacy `audio` entry so a
+  // song saved before this field became a plain link (rather than an
+  // embedded audio player) still shows its URL back in the editor.
+  document.getElementById('editor-link').value =
+    (song && song.links && song.links[0] && song.links[0].url) ||
     (song && song.audio && song.audio[0] && song.audio[0].url) || '';
   document.getElementById('editor-lyrics').value = song ? (song.lyrics || []).join('\n') : '';
 
@@ -2634,7 +2653,7 @@ function saveSongFromEditor() {
 
   const artist = document.getElementById('editor-artist').value.trim();
   const key = document.getElementById('editor-key').value.trim();
-  const audioUrl = document.getElementById('editor-audio').value.trim();
+  const linkUrl = document.getElementById('editor-link').value.trim();
   const lyrics = document.getElementById('editor-lyrics').value.split('\n');
 
   const existing = state.editorSongId ? findSongByRef('user', state.editorSongId) : null;
@@ -2644,7 +2663,11 @@ function saveSongFromEditor() {
     artist: artist || undefined,
     key: key || undefined,
     lyrics,
-    audio: audioUrl ? [{ url: audioUrl, label: t('listenLink') }] : [],
+    // A plain, clickable link (YouTube, a streaming page, anything) — not
+    // an embedded audio player, since the URL isn't guaranteed to be a
+    // playable audio file. Rendered via the same sv-link-btn list as the
+    // official songbook's own links (see renderSongView()).
+    links: linkUrl ? [{ url: linkUrl, label: t('songLinkLabel') }] : [],
     // labels/sheetMusic are wired into the data model now (matching how
     // official songs already carry these fields — see README's "Song data
     // structure") so v3.5's label UI can start writing here without any
