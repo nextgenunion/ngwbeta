@@ -189,7 +189,7 @@ const PAGES = {
   'song-editor':    { elId: 'page-song-editor',    navKey: 'user-songs', rememberScroll: false, hideNav: true },
   'playlists':      { elId: 'page-playlists',      navKey: 'playlists', rememberScroll: true,  onEnter: () => renderPlaylistsList() },
   'playlist-view':  { elId: 'page-playlist-view',  navKey: 'playlists', rememberScroll: false, hideNav: true },
-  'settings':       { elId: 'page-settings',       navKey: 'settings',  rememberScroll: true,  onEnter: () => resetContactUI() },
+  'settings':       { elId: 'page-settings',       navKey: 'settings',  rememberScroll: true,  onEnter: () => { resetContactUI(); updateAllSegToggleThumbs({ instant: true }); } },
   'about':          { elId: 'page-about',          navKey: 'settings',  rememberScroll: false, hideNav: true },
   // Only reachable once unlocked (see unlockDevOptions()) — not through
   // history/deep-linking before that, since showPage() itself doesn't
@@ -204,6 +204,12 @@ const PAGES = {
 // transition in showPage(); tab switches (Songs/Playlists/Settings) stay
 // an instant cut, same as before.
 const SLIDE_PAGES = new Set(['song-view', 'playlist-view', 'about', 'dev-options', 'song-editor']);
+
+// The four bottom-nav tabs — sibling pages switched via .nav-btn taps
+// rather than "opened on top of" one another, so they get the crossfade
+// in runTabFadeTransition() below instead of SLIDE_PAGES' push/pop slide.
+// See showPage()'s transitionType selection.
+const TAB_PAGES = new Set(['songs', 'user-songs', 'playlists', 'settings']);
 
 // Remembers each rememberScroll page's scroll position (each .page
 // element's own scrollTop — see the CSS notes on .page for why it's no
@@ -1098,7 +1104,61 @@ function applyChordStyle() {
   document.querySelectorAll('#chord-style-toggle [data-chord-style]').forEach(btn => {
     btn.setAttribute('aria-pressed', String(btn.dataset.chordStyle === state.chordStyle));
   });
+  positionSegToggleThumb(document.getElementById('chord-style-toggle'));
 }
+
+// Slides/resizes a .seg-toggle-thumb (see the CSS) to sit exactly behind
+// whichever button in `container` is currently aria-pressed="true" — sized
+// to that button's own offsetWidth, so this works the same whether the
+// options are equal-width (Chips/Text) or not (Normal/Semibold/Bold).
+// Measured as the distance from the *first* button's left edge rather than
+// the container's, so it comes out right regardless of exactly how a
+// browser accounts for the container's own border/padding in offsetLeft —
+// both buttons are measured the identical way, so that constant cancels
+// out of the difference.
+//
+// opts.instant skips the CSS transition for this one update (container
+// becoming visible, a language change re-flowing button widths, a window
+// resize) so the thumb snaps straight to the right spot instead of
+// visibly growing/sliding in from wherever it last was — reserved for
+// updates the person didn't just tap themselves in this toggle.
+// offsetParent is null while `container` sits on a hidden page (e.g. at
+// startup, before Settings has ever been opened) — skip until it's
+// actually on screen, since every measurement below would just come back
+// zero; see the Settings page's onEnter and updateAllSegToggleThumbs()
+// for where it gets corrected once that's no longer true.
+function positionSegToggleThumb(container, opts = {}) {
+  if (!container) return;
+  const thumb = container.querySelector('.seg-toggle-thumb');
+  const pressed = container.querySelector('.seg-toggle-btn[aria-pressed="true"]');
+  const first = container.querySelector('.seg-toggle-btn');
+  if (!thumb || !pressed || !first || container.offsetParent === null) return;
+
+  const { instant = false } = opts;
+  if (instant) thumb.style.transitionDuration = '0s';
+  thumb.style.width = pressed.offsetWidth + 'px';
+  thumb.style.transform = `translateX(${pressed.offsetLeft - first.offsetLeft}px)`;
+  if (instant) {
+    void thumb.offsetWidth; // apply the instant move before restoring the animated duration
+    thumb.style.transitionDuration = '';
+  }
+}
+
+function updateAllSegToggleThumbs(opts = {}) {
+  document.querySelectorAll('.seg-toggle').forEach(el => positionSegToggleThumb(el, opts));
+}
+
+// A resize (rotation, desktop window resize, font-group rows wrapping
+// differently) can change a seg-toggle-btn's own width without any
+// aria-pressed change ever firing — nothing else above would notice, so
+// this re-measures all of them directly. Debounced since 'resize' fires
+// continuously while dragging; instant:true because a viewport resize
+// isn't the person tapping a pill, so it shouldn't visibly slide.
+let segToggleResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(segToggleResizeTimer);
+  segToggleResizeTimer = setTimeout(() => updateAllSegToggleThumbs({ instant: true }), 120);
+});
 
 // Hide chords entirely (opt-in, sits right below the Chips/Text toggle):
 // lyrics-only view for people who already know the song, or a leader who
@@ -1120,6 +1180,7 @@ function applyLyricsWeight() {
   document.querySelectorAll('#lyrics-weight-toggle [data-lyrics-weight]').forEach(btn => {
     btn.setAttribute('aria-pressed', String(btn.dataset.lyricsWeight === state.lyricsWeight));
   });
+  positionSegToggleThumb(document.getElementById('lyrics-weight-toggle'));
 }
 
 // Line spacing (Settings → Appearance): vertical rhythm between lyric
@@ -1131,6 +1192,7 @@ function applyLyricsSpacing() {
   document.querySelectorAll('#lyrics-spacing-toggle [data-lyrics-spacing]').forEach(btn => {
     btn.setAttribute('aria-pressed', String(btn.dataset.lyricsSpacing === state.lyricsSpacing));
   });
+  positionSegToggleThumb(document.getElementById('lyrics-spacing-toggle'));
 }
 
 // Switches which song database (see DB_SOURCES) the Songs page, search,
@@ -1441,6 +1503,11 @@ function applyLanguage() {
   updateSabbathMascotText(); // re-translate the mascot's bubble if it's showing
   if (state.currentPage === 'playlist-view') renderPlaylistView();
   if (state.activeSong) { updateFavoriteButtonUI(); updateSongViewMenuUI(); }
+  // Translated labels (Normal/Semibold/Bold etc.) can be wider or narrower
+  // in the new language — instant, since this isn't the person tapping a
+  // pill themselves. No-ops harmlessly if Settings isn't the page on
+  // screen right now (see positionSegToggleThumb's offsetParent guard).
+  updateAllSegToggleThumbs({ instant: true });
 }
 
 // ---------------------------------------------------------
@@ -1511,15 +1578,20 @@ function showPage(name, opts = {}) {
       transitionType = 'pop';
     } else if (pendingNavDirection !== 'back' && SLIDE_PAGES.has(name) && prevEl) {
       transitionType = 'push';
+    } else if (TAB_PAGES.has(name) && TAB_PAGES.has(prevName) && prevEl) {
+      transitionType = 'tabfade';
     }
   }
   pendingNavDirection = 'forward';
 
-  if (transitionType) {
+  if (transitionType === 'push' || transitionType === 'pop') {
     const prevEl = document.getElementById(PAGES[prevName].elId);
     runPageSlideTransition(transitionType, prevEl, targetEl, {
       onDone: name === 'song-view' ? fixNativeAudioControlsPaint : null,
     });
+  } else if (transitionType === 'tabfade') {
+    const prevEl = document.getElementById(PAGES[prevName].elId);
+    runTabFadeTransition(prevEl, targetEl);
   } else {
     Object.values(PAGES).forEach(p => { document.getElementById(p.elId).hidden = true; });
     targetEl.hidden = false;
@@ -1636,6 +1708,39 @@ function runPageSlideTransition(type, fromEl, toEl, opts = {}) {
   topEl.addEventListener('animationend', cleanup);
 }
 
+// Crossfade for TAB_PAGES switches (tapping a different bottom-nav
+// button). The incoming page fades/rises in on top of the outgoing one —
+// see the .tab-fade-in CSS comment for why the outgoing page doesn't need
+// its own fade-out animation.
+function runTabFadeTransition(fromEl, toEl) {
+  Object.values(PAGES).forEach(p => {
+    const el = document.getElementById(p.elId);
+    if (el !== fromEl && el !== toEl) el.hidden = true;
+  });
+  fromEl.hidden = false;
+  toEl.hidden = false;
+  toEl.style.zIndex = '2';
+  fromEl.style.zIndex = '1';
+
+  toEl.classList.remove('tab-fade-in');
+  void toEl.offsetWidth; // restart the animation if one is already mid-flight
+  toEl.classList.add('tab-fade-in');
+
+  if (toEl._tabFadeCleanup) {
+    toEl.removeEventListener('animationend', toEl._tabFadeCleanup);
+  }
+  const cleanup = () => {
+    toEl.classList.remove('tab-fade-in');
+    toEl.style.zIndex = '';
+    fromEl.style.zIndex = '';
+    fromEl.hidden = true;
+    toEl.removeEventListener('animationend', cleanup);
+    toEl._tabFadeCleanup = null;
+  };
+  toEl._tabFadeCleanup = cleanup;
+  toEl.addEventListener('animationend', cleanup);
+}
+
 // ---------------------------------------------------------
 // Songs page: search + sort + list rendering
 // ---------------------------------------------------------
@@ -1643,7 +1748,7 @@ function bindSongsPage() {
   const input = document.getElementById('search-input');
   input.addEventListener('input', () => {
     state.query = input.value.trim().toLowerCase();
-    renderSongList();
+    renderSongList({ animate: true });
   });
 
   document.querySelectorAll('.sort-btn[data-sort-by]').forEach(btn => {
@@ -1651,7 +1756,7 @@ function bindSongsPage() {
       state.sortBy = btn.dataset.sortBy;
       document.querySelectorAll('.sort-btn[data-sort-by]').forEach(b => b.setAttribute('aria-pressed', 'false'));
       btn.setAttribute('aria-pressed', 'true');
-      renderSongList();
+      renderSongList({ animate: true });
     });
   });
 
@@ -1660,7 +1765,7 @@ function bindSongsPage() {
       state.sortOrder = btn.dataset.sortOrder;
       document.querySelectorAll('.sort-btn[data-sort-order]').forEach(b => b.setAttribute('aria-pressed', 'false'));
       btn.setAttribute('aria-pressed', 'true');
-      renderSongList();
+      renderSongList({ animate: true });
     });
   });
 }
@@ -1677,7 +1782,7 @@ function bindUserSongsPage() {
   const input = document.getElementById('user-song-search-input');
   input.addEventListener('input', () => {
     state.userSongQuery = input.value.trim().toLowerCase();
-    renderUserSongList();
+    renderUserSongList({ animate: true });
   });
 
   document.getElementById('new-user-song-btn').addEventListener('click', () => {
@@ -1685,13 +1790,14 @@ function bindUserSongsPage() {
   });
 }
 
-function renderUserSongList() {
+function renderUserSongList(opts = {}) {
   renderSongList({
     sourceKey: 'user',
     listElId: 'user-song-list',
     emptyElId: 'user-songs-empty-state',
     countElId: 'user-songs-results-count',
     query: state.userSongQuery,
+    animate: opts.animate,
   });
   document.getElementById('user-songs-empty-state').textContent = t('userSongsEmptyState');
 }
@@ -1799,6 +1905,12 @@ function renderSongList(opts = {}) {
     emptyElId = 'empty-state',
     countElId = 'results-count',
     query = state.query,
+    // Set by the search inputs and sort buttons (see bindSongsPage/
+    // bindUserSongsPage) — everything else that re-renders a list (tab
+    // navigation, language change, db switch) leaves this off, since an
+    // animation there would fire on every page visit rather than reading
+    // as a response to something the person just did.
+    animate = false,
   } = opts;
 
   const source = state.sources[sourceKey];
@@ -1810,6 +1922,7 @@ function renderSongList(opts = {}) {
     listEl.innerHTML = `<li class="load-error">${escapeHtml(t('songLoadError'))}</li>`;
     emptyEl.hidden = true;
     countEl.textContent = '';
+    if (animate) animateListRefresh(listEl, emptyEl, countEl);
     return;
   }
 
@@ -1848,6 +1961,26 @@ function renderSongList(opts = {}) {
     li.appendChild(row);
     listEl.appendChild(li);
   });
+
+  if (animate) animateListRefresh(listEl, emptyEl, countEl);
+}
+
+// Quick opacity/translate dip-and-recover, retriggered on every keystroke
+// in a search box and on every sort change (see renderSongList's animate
+// option). The re-render above is already synchronous/instant — this runs
+// after the fact and never delays it — it's purely a visual layer so the
+// swapped-in results read as a smooth fade rather than an abrupt cut.
+// Restarting a CSS animation that's already mid-flight needs the
+// remove/reflow/re-add dance (same trick used for the page-slide and
+// heart-pop animations elsewhere in this file), since re-adding a class
+// that's already present is a no-op.
+function animateListRefresh(...els) {
+  if (prefersReducedMotion()) return;
+  const targets = els.filter(Boolean);
+  if (!targets.length) return;
+  targets.forEach(el => el.classList.remove('list-refresh-flash'));
+  void targets[0].offsetWidth;
+  targets.forEach(el => el.classList.add('list-refresh-flash'));
 }
 
 // ---------------------------------------------------------
@@ -1890,6 +2023,11 @@ function bindSongView() {
     if (!song) return;
     toggleFavorite(state.activeSourceKey, song.id);
     updateFavoriteButtonUI();
+    const favBtn = document.getElementById('sv-favorite-btn');
+    favBtn.classList.remove('heart-pop');
+    void favBtn.offsetWidth; // restart the animation if a previous tap's spin hasn't finished
+    favBtn.classList.add('heart-pop');
+    favBtn.addEventListener('animationend', () => favBtn.classList.remove('heart-pop'), { once: true });
   });
 
   document.getElementById('sv-add-playlist-btn').addEventListener('click', () => {

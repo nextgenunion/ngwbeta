@@ -345,6 +345,27 @@ body.nav-hidden .page-inner {
   .page-slide-in, .page-slide-out { animation: none; box-shadow: none; }
 }
 
+/* Crossfade for switching between bottom-nav TAB_PAGES (Songs/User Songs/
+   Playlists/Settings — see TAB_PAGES/runTabFadeTransition in app.js).
+   Unlike the push/pop slide above (which reads as "opening" a page that
+   sits on top of another), these are sibling tabs at the same level, so a
+   quick fade+settle reads as a more "precise" snap between them than a
+   horizontal slide would. The incoming page fades/rises in on top; the
+   outgoing page just sits static underneath (visible through the
+   incoming page's own opacity for the length of the fade) rather than
+   needing its own fade-out animation. */
+@keyframes tab-fade-in {
+  from { opacity: 0; transform: translateY(5px) scale(.99); }
+  to   { opacity: 1; transform: none; }
+}
+.tab-fade-in {
+  animation: tab-fade-in 220ms cubic-bezier(.22, .61, .36, 1) both;
+  will-change: opacity, transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-fade-in { animation: none; }
+}
+
 .page-header {
   padding: 22px 2px 14px;
   position: relative;
@@ -563,7 +584,7 @@ body.nav-hidden .page-inner {
   padding: 7px 13px;
   border-radius: 999px;
   cursor: pointer;
-  transition: background .15s, color .15s, border-color .15s;
+  transition: background .15s, color .15s, border-color .15s, transform .24s cubic-bezier(.34, 1.56, .64, 1);
 }
 .sort-btn[aria-pressed="true"] {
   background: var(--ink);
@@ -580,6 +601,22 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   font-size: 0.78rem;
   color: var(--ink-faint);
   margin: 14px 2px 6px;
+}
+
+/* Quick opacity/translate dip-and-recover, retriggered (see
+   animateListRefresh() in app.js) on every keystroke in a search box and
+   on every sort-order change. The underlying re-render is still
+   synchronous/instant — filtering never waits on this — this is purely a
+   visual layer on top so the swapped-in results read as a smooth fade
+   rather than an abrupt cut. Applied to the list, its empty-state message,
+   and its result count together so whichever of those is actually showing
+   settles in sync with the others. */
+@keyframes list-refresh-flash {
+  from { opacity: .3; transform: translateY(3px); }
+  to   { opacity: 1; transform: none; }
+}
+.list-refresh-flash {
+  animation: list-refresh-flash .24s cubic-bezier(.22, .61, .36, 1);
 }
 
 /* ---------- song list ---------- */
@@ -843,13 +880,40 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
    the same way the A−/A+ chip-btn pairs do. */
 .seg-toggle {
   display: flex;
+  position: relative; /* anchors .seg-toggle-thumb below */
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 2px;
   background: var(--paper);
   flex-shrink: 0;
 }
+/* The pressed segment's fill, as an actual element that slides/resizes
+   under the buttons (via JS — see positionSegToggleThumb() in app.js)
+   instead of being painted as each button's own background. Sized off
+   the pressed button's real offsetWidth so it works for options of
+   different widths (Normal/Semibold/Bold) same as equal ones (Chips/Text).
+   Sits at z-index:0, under the (position:relative, z-index:1) buttons —
+   see .seg-toggle-btn below — so the label text always reads on top of it. */
+.seg-toggle-thumb {
+  position: absolute;
+  top: 2px; bottom: 2px; left: 0;
+  width: 0;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  z-index: 0;
+  pointer-events: none;
+  transition: transform .32s cubic-bezier(.32, 1.15, .4, 1), width .32s cubic-bezier(.32, 1.15, .4, 1);
+}
+/* Dark mode inverts --accent-strong to a pale text-tint (readable as text
+   on a dark surface — see .btn-secondary), not a fill — using it as the
+   thumb's background here left it washed-out pale against the dark chrome
+   around it, the same mismatch .btn-primary already corrects for by
+   switching to --accent/--paper-dim in dark mode. Mirror that fix here so
+   the thumb reads as a solid, on-brand fill in both themes. */
+html[data-theme="dark"] .seg-toggle-thumb { background: var(--accent); }
 .seg-toggle-btn {
+  position: relative; /* stacks above .seg-toggle-thumb */
+  z-index: 1;
   border: none;
   background: transparent;
   color: var(--ink-soft);
@@ -860,22 +924,10 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   border-radius: 999px;
   cursor: pointer;
   line-height: 1.2;
+  transition: color .2s ease;
 }
-.seg-toggle-btn[aria-pressed="true"] {
-  background: var(--accent-strong);
-  color: var(--paper);
-}
-/* Dark mode inverts --accent-strong to a pale text-tint (readable as text
-   on a dark surface — see .btn-secondary), not a fill — using it as the
-   active pill's *background* here left the pressed segment washed-out
-   pale against the dark chrome around it, the same mismatch .btn-primary
-   already corrects for by switching to --accent/--paper-dim in dark mode.
-   Mirror that fix here so the pressed Chips/Text (and Hide chords) segment
-   reads as a solid, on-brand fill in both themes. */
-html[data-theme="dark"] .seg-toggle-btn[aria-pressed="true"] {
-  background: var(--accent);
-  color: var(--paper-dim);
-}
+.seg-toggle-btn[aria-pressed="true"] { color: var(--paper); }
+html[data-theme="dark"] .seg-toggle-btn[aria-pressed="true"] { color: var(--paper-dim); }
 
 .sv-labels { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
 .sv-label-chip {
@@ -1491,9 +1543,11 @@ html[data-theme="dark"] .btn-primary { background: var(--accent); color: var(--p
   font-weight: 600;
   cursor: pointer;
 }
-.nav-btn svg { width: 23px; height: 23px; fill: var(--ink-faint); }
+.nav-btn { transition: color .18s ease, transform .24s cubic-bezier(.34, 1.56, .64, 1); }
+.nav-btn:active { transform: scale(0.93); transition-duration: .08s; }
+.nav-btn svg { width: 23px; height: 23px; fill: var(--ink-faint); transition: fill .18s ease, transform .22s cubic-bezier(.34, 1.56, .64, 1); }
 .nav-btn.is-active { color: var(--accent-strong); }
-.nav-btn.is-active svg { fill: var(--accent-strong); }
+.nav-btn.is-active svg { fill: var(--accent-strong); transform: scale(1.08); }
 
 /* ---------- toast ---------- */
 .toast {
@@ -1550,6 +1604,27 @@ html[data-theme="dark"] .toast {
   outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
 }
+
+/* ---------- universal button press feedback ----------
+   Every plain <button> gets a quick, subtle "pop": scale down fast on
+   press, then spring back past 1 and settle on release. The overshoot
+   comes entirely from the cubic-bezier's y > 1 control point — a plain
+   transition from the pressed scale back to 1 already produces the
+   bounce, no separate keyframe needed. transition-duration is shortened
+   on :active so the press itself feels immediate; releasing uses the
+   slower, bouncy duration from the base rule.
+   .song-row/.playlist-row/.switch keep their own existing :active
+   treatment (scale(.99) / knob slide) instead of this, so they're
+   excluded here rather than getting a second, conflicting transform. */
+button:where(:not(.song-row):not(.playlist-row):not(.switch)) {
+  transition: transform .24s cubic-bezier(.34, 1.56, .64, 1);
+}
+button:where(:not(.song-row):not(.playlist-row):not(.switch)):active {
+  transform: scale(0.93);
+  transition-duration: .08s;
+}
+button:disabled { transform: none !important; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
@@ -1615,6 +1690,22 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
 .song-view-header { flex-wrap: wrap; }
 #sv-favorite-btn[aria-pressed="true"] svg { fill: var(--danger); }
 #sv-favorite-btn { margin-left: auto; }
+/* Retriggered on every tap (see the sv-favorite-btn click handler in
+   app.js, which swaps heart-outline/heart-filled just before this runs) —
+   a full spin with a bit of scale overshoot on the way, in both directions
+   (favoriting and unfavoriting), rather than the icon just silently
+   swapping. Targets the svg, not the button itself, so the button's own
+   universal press-pop (scale on :active, see the focus & motion section)
+   keeps working independently without the two transforms fighting. */
+@keyframes heart-spin-pop {
+  0%   { transform: scale(1) rotate(0deg); }
+  35%  { transform: scale(1.32) rotate(160deg); }
+  65%  { transform: scale(0.92) rotate(300deg); }
+  100% { transform: scale(1) rotate(360deg); }
+}
+#sv-favorite-btn.heart-pop svg {
+  animation: heart-spin-pop .5s cubic-bezier(.34, 1.56, .64, 1);
+}
 
 /* ---------- playlist-view header ---------- */
 .pv-header-actions { display: flex; align-items: center; gap: 8px; margin-left: 12px; flex-shrink: 0; }
@@ -1646,7 +1737,7 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
   padding: 9px 14px;
   border-radius: 999px;
   cursor: pointer;
-  transition: background .15s, color .15s, border-color .15s;
+  transition: background .15s, color .15s, border-color .15s, transform .24s cubic-bezier(.34, 1.56, .64, 1);
 }
 .btn-pill-toggle[aria-pressed="true"] {
   background: var(--accent-strong);
