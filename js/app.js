@@ -1160,6 +1160,21 @@ window.addEventListener('resize', () => {
   segToggleResizeTimer = setTimeout(() => updateAllSegToggleThumbs({ instant: true }), 120);
 });
 
+// The very first positionSegToggleThumb() call (Settings opened before the
+// person has tapped anything) can land before the real 'Inter' webfont has
+// swapped in — offsetWidth at that moment reflects the fallback font's
+// metrics, not Inter's, so the thumb can end up a few px off from the
+// button it's meant to sit under. The container/button boxes themselves
+// aren't affected (their width is plain CSS, so the browser keeps them in
+// sync with whichever font is actually painted) — only this JS-measured,
+// JS-set thumb width can go stale. document.fonts.ready resolves once
+// every requested face has finished loading, so re-measuring then closes
+// that gap; instant:true for the same reason as the resize handler above —
+// this isn't the person tapping a pill, so it shouldn't visibly slide.
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => updateAllSegToggleThumbs({ instant: true })).catch(() => {});
+}
+
 // Hide chords entirely (opt-in, sits right below the Chips/Text toggle):
 // lyrics-only view for people who already know the song, or a leader who
 // wants the words on screen without chord clutter. Doesn't touch song
@@ -2172,8 +2187,13 @@ function openSongViewMenu() {
 
 function closeSongViewMenu() {
   const wrap = document.getElementById('sv-kebab-dropdown');
-  if (wrap) wrap.remove();
   songViewMenuOpen = false;
+  if (!wrap) return;
+  if (prefersReducedMotion()) { wrap.remove(); return; }
+  // See closePlaylistMenu()'s comment on why the id is freed up-front.
+  wrap.removeAttribute('id');
+  wrap.classList.add('kebab-dropdown-exit');
+  wrap.addEventListener('animationend', () => wrap.remove(), { once: true });
 }
 
 function updateFavoriteButtonUI() {
@@ -2620,7 +2640,7 @@ function saveSongFromEditor() {
 
   saveUserSong(song).then(() => {
     showToast(existing ? t('toastSongUpdated') : t('toastSongCreated'));
-    if (state.currentPage === 'user-songs') renderUserSongList();
+    if (state.currentPage === 'user-songs') renderUserSongList({ animate: true });
     // Whatever page this editor was opened from (the User Songs list, or
     // song-view via the kebab menu) is one history entry back — its
     // popstate handler re-resolves the song by id from
@@ -2669,7 +2689,7 @@ function confirmDeleteUserSong(song, opts = {}) {
 
     deleteUserSong(song.id).then(() => {
       showToast(t('toastSongDeleted'));
-      if (state.currentPage === 'user-songs') renderUserSongList();
+      if (state.currentPage === 'user-songs') renderUserSongList({ animate: true });
       for (let i = 0; i < popCount; i++) history.back();
     }).catch(err => {
       console.error('Songbook: failed to delete user song —', err);
@@ -2892,7 +2912,48 @@ function bindPlaylistsPage() {
   });
 }
 
-function renderPlaylistsList() {
+// Builds one playlist row <li> from scratch (icon + title + song count +
+// click handler). Used for every row on a plain rebuild, and for rows
+// that are newly entering on a diffed (animate: true) render — see
+// updatePlaylistRowContent() for the reused-row counterpart.
+function buildPlaylistRow(id, pl) {
+  const li = document.createElement('li');
+  li.dataset.plId = id;
+  const row = document.createElement('button');
+  row.className = 'playlist-row' + (pl.isFavorites ? ' is-favorites' : '');
+  row.innerHTML = `
+    <span class="playlist-icon"><svg viewBox="0 0 24 24" data-icon="${pl.isFavorites ? 'heart-filled' : 'nav-playlist'}"></svg></span>
+    <span class="playlist-row-text">
+      <span class="playlist-row-title">${escapeHtml(playlistDisplayName(pl))}</span>
+      <span class="playlist-row-sub">${t('playlistSongCount', pl.songs.length)}</span>
+    </span>
+  `;
+  row.addEventListener('click', () => openPlaylist(id));
+  li.appendChild(row);
+  initIcons(li);
+  return li;
+}
+
+// Refreshes an existing row's text in place (name/song-count can change —
+// e.g. a rename, or a song added elsewhere) without touching its icon or
+// click handler. isFavorites never changes for a given id, so the icon
+// never needs to be re-picked here.
+function updatePlaylistRowContent(li, pl) {
+  const row = li.firstElementChild;
+  row.querySelector('.playlist-row-title').textContent = playlistDisplayName(pl);
+  row.querySelector('.playlist-row-sub').textContent = t('playlistSongCount', pl.songs.length);
+}
+
+// animate: true fades newly-created/newly-removed playlists in/out
+// (see the song-row-enter/song-row-exit pair renderSongList's diffed
+// render uses for the same purpose) instead of the whole list just
+// popping to its new state — pass this from the specific action that
+// added or removed a playlist (create/delete), not from routine
+// re-renders like a tab visit or a language change, so the animation
+// reads as a response to what the person just did rather than firing on
+// every page visit.
+function renderPlaylistsList(opts = {}) {
+  const { animate = false } = opts;
   const listEl = document.getElementById('playlist-list');
   const emptyEl = document.getElementById('playlists-empty-state');
   emptyEl.textContent = t('playlistsEmptyState');
@@ -2908,45 +2969,111 @@ function renderPlaylistsList() {
   // below it — use the tighter, divider-attached spacing instead of the
   // large centered gap meant for a page with nothing in it at all.
   emptyEl.classList.toggle('playlists-empty-state--pinned', ownCount === 0 && hasFavoritesPinned);
-  listEl.innerHTML = '';
 
-  ids.forEach((id, index) => {
-    const pl = state.playlists.byId[id];
-
-    // Favorites is always pinned first (see loadPlaylists/createPlaylist),
-    // so a divider right after it visually separates it from the user's
-    // own playlists below — shown whether or not there are any yet, so it
-    // also sits between Favorites and the "no playlists yet" text.
-    if (index === 1 && hasFavoritesPinned) {
+  if (!animate || prefersReducedMotion()) {
+    // Plain rebuild — used for routine re-renders (tab visits, language
+    // change, import) where nothing is animating, so there's no reason to
+    // pay for the diff below.
+    listEl.innerHTML = '';
+    ids.forEach((id, index) => {
+      // Favorites is always pinned first (see loadPlaylists/createPlaylist),
+      // so a divider right after it visually separates it from the user's
+      // own playlists below — shown whether or not there are any yet, so it
+      // also sits between Favorites and the "no playlists yet" text.
+      if (index === 1 && hasFavoritesPinned) {
+        const divider = document.createElement('li');
+        divider.className = 'playlist-list-divider';
+        listEl.appendChild(divider);
+      }
+      listEl.appendChild(buildPlaylistRow(id, state.playlists.byId[id]));
+    });
+    // Only Favorites exists — the index===1 divider above never runs
+    // (there's no second item to trigger it), so add it here instead,
+    // right before the "no playlists yet" text.
+    if (ownCount === 0 && hasFavoritesPinned) {
       const divider = document.createElement('li');
       divider.className = 'playlist-list-divider';
       listEl.appendChild(divider);
     }
+    return;
+  }
 
-    const li = document.createElement('li');
-    const row = document.createElement('button');
-    row.className = 'playlist-row' + (pl.isFavorites ? ' is-favorites' : '');
-    row.innerHTML = `
-      <span class="playlist-icon"><svg viewBox="0 0 24 24" data-icon="${pl.isFavorites ? 'heart-filled' : 'nav-playlist'}"></svg></span>
-      <span class="playlist-row-text">
-        <span class="playlist-row-title">${escapeHtml(playlistDisplayName(pl))}</span>
-        <span class="playlist-row-sub">${t('playlistSongCount', pl.songs.length)}</span>
-      </span>
-    `;
-    row.addEventListener('click', () => openPlaylist(id));
-    li.appendChild(row);
-    listEl.appendChild(li);
-    initIcons(li);
+  // Diffed render: only the playlist actually being added or removed
+  // animates — every other row is reused in place (just its text
+  // refreshed) so it never flickers. Same approach as renderSongList's
+  // diffed render, keyed by playlist id instead of song id.
+  const existingRows = new Map();
+  Array.from(listEl.children).forEach(li => {
+    if (li.dataset.plId) existingRows.set(li.dataset.plId, li);
   });
 
-  // Only Favorites exists — the index===1 divider above never runs (there's
-  // no second item to trigger it), so add it here instead, right before the
-  // "no playlists yet" text.
+  const fragment = document.createDocumentFragment();
+  const keptIds = new Set();
+
+  ids.forEach((id, index) => {
+    if (index === 1 && hasFavoritesPinned) {
+      const divider = document.createElement('li');
+      divider.className = 'playlist-list-divider';
+      fragment.appendChild(divider);
+    }
+    keptIds.add(id);
+    const pl = state.playlists.byId[id];
+    let li = existingRows.get(id);
+    if (li) {
+      // Already on screen — bring back from a leave-animation if this
+      // playlist reappears mid-fade (shouldn't normally happen, but
+      // mirrors renderSongList's same safeguard), and refresh its text.
+      if (li.dataset.state === 'exiting') {
+        delete li.dataset.state;
+        li.classList.remove('song-row-exit');
+        if (li._exitCleanup) {
+          li.removeEventListener('animationend', li._exitCleanup);
+          li._exitCleanup = null;
+        }
+      }
+      updatePlaylistRowContent(li, pl);
+    } else {
+      li = buildPlaylistRow(id, pl);
+      li.classList.add('song-row-enter');
+      li.addEventListener('animationend', function onEnd() {
+        li.classList.remove('song-row-enter');
+        li.removeEventListener('animationend', onEnd);
+      }, { once: true });
+    }
+    fragment.appendChild(li); // detaches reused rows from listEl, leaving only dropped-out ones (and stale dividers) behind
+  });
+
   if (ownCount === 0 && hasFavoritesPinned) {
     const divider = document.createElement('li');
     divider.className = 'playlist-list-divider';
-    listEl.appendChild(divider);
+    fragment.appendChild(divider);
   }
+
+  // Whatever's left in listEl now got deleted — fade it out and remove it
+  // once its animation finishes, instead of cutting it instantly.
+  existingRows.forEach((li, id) => {
+    if (keptIds.has(id) || li.dataset.state === 'exiting') return;
+    li.dataset.state = 'exiting';
+    li.classList.add('song-row-exit');
+    const cleanup = () => {
+      li.removeEventListener('animationend', cleanup);
+      li._exitCleanup = null;
+      li.remove();
+    };
+    li._exitCleanup = cleanup;
+    li.addEventListener('animationend', cleanup);
+  });
+
+  // Old dividers are cheap to just drop and recreate fresh above (they
+  // carry no content worth preserving), rather than diffing them too.
+  Array.from(listEl.children).forEach(li => {
+    if (!li.dataset.plId) li.remove();
+  });
+
+  // New order goes in ahead of anything still fading out, so the visible
+  // list reads top-to-bottom correctly while leaving rows finish
+  // underneath.
+  listEl.insertBefore(fragment, listEl.firstChild);
 }
 
 // ---------------------------------------------------------
@@ -3020,8 +3147,15 @@ function openPlaylistMenu() {
 
 function closePlaylistMenu() {
   const wrap = document.getElementById('playlist-kebab-dropdown');
-  if (wrap) wrap.remove();
   playlistMenuOpen = false;
+  if (!wrap) return;
+  if (prefersReducedMotion()) { wrap.remove(); return; }
+  // Free the id immediately (rather than waiting for the exit animation to
+  // finish) so a fast re-open — which looks up this same id — never
+  // collides with the copy that's still fading out underneath it.
+  wrap.removeAttribute('id');
+  wrap.classList.add('kebab-dropdown-exit');
+  wrap.addEventListener('animationend', () => wrap.remove(), { once: true });
 }
 
 let playlistEditMode = false;
@@ -3359,7 +3493,7 @@ function promptCreatePlaylist(onCreated) {
     const id = createPlaylist(name);
     closeModal();
     showToast(t('toastPlaylistCreated'));
-    if (state.currentPage === 'playlists') renderPlaylistsList();
+    if (state.currentPage === 'playlists') renderPlaylistsList({ animate: true });
     if (onCreated) onCreated(id);
   });
   openModal(t('newPlaylistTitle'), form);
@@ -3393,7 +3527,7 @@ function confirmDeletePlaylist(id) {
       state.activePlaylistId = null;
       history.back();
     }
-    if (state.currentPage === 'playlists') renderPlaylistsList();
+    if (state.currentPage === 'playlists') renderPlaylistsList({ animate: true });
   });
 
   openModal(t('deletePlaylistTitle'), wrap);
@@ -3465,6 +3599,41 @@ function openAddToPlaylistModal(sourceKey, songId) {
 // search the official song list and toggle songs in or out of the
 // current playlist.
 // ---------------------------------------------------------
+// Smoothly animates el's height from its current value to targetHeight
+// (a FLIP-style height transition), instead of letting a content change
+// snap the box to its new size instantly — used by openAddSongsModal's
+// search results, where the result count (and so the popup's height)
+// changes on every keystroke. fromHeight lets a caller pass an
+// already-known starting height instead of re-measuring (useful right
+// before the DOM is mutated, since measuring after would read the new
+// size instead of the old one).
+// Re-triggering this while a previous call is still mid-flight (e.g. two
+// keystrokes in quick succession) cleanly takes over from wherever the
+// box currently is, the same remove/reflow/re-add approach used for the
+// page-slide and heart-pop animations elsewhere in this file.
+function animateWrapHeightTo(el, targetHeight, fromHeight) {
+  if (prefersReducedMotion()) { el.style.height = ''; return; }
+  if (el._heightTransitionCleanup) {
+    el.removeEventListener('transitionend', el._heightTransitionCleanup);
+    el._heightTransitionCleanup = null;
+  }
+  const start = fromHeight != null ? fromHeight : el.getBoundingClientRect().height;
+  el.style.transition = 'none';
+  el.style.height = start + 'px';
+  void el.offsetHeight; // force the browser to register the start height before animating away from it
+  el.style.transition = 'height .28s cubic-bezier(.2, .8, .2, 1)';
+  requestAnimationFrame(() => { el.style.height = targetHeight + 'px'; });
+  const cleanup = (e) => {
+    if (e && e.propertyName !== 'height') return;
+    el.style.height = '';
+    el.style.transition = '';
+    el.removeEventListener('transitionend', cleanup);
+    el._heightTransitionCleanup = null;
+  };
+  el._heightTransitionCleanup = cleanup;
+  el.addEventListener('transitionend', cleanup);
+}
+
 function openAddSongsModal(playlistId) {
   const wrap = document.createElement('div');
   const searchWrap = document.createElement('div');
@@ -3473,46 +3642,129 @@ function openAddSongsModal(playlistId) {
     <svg class="search-icon" data-icon="search" viewBox="0 0 24 24" aria-hidden="true"></svg>
     <input type="search" id="add-songs-search" class="search-field" inputmode="search" autocomplete="off">
   `;
+  // listWrap clips and height-animates around the list (see
+  // animateWrapHeightTo) — the list itself is left free to just hold rows,
+  // same as every other checklist/song list in the app.
+  const listWrap = document.createElement('div');
+  listWrap.className = 'add-songs-list-wrap';
   const list = document.createElement('ul');
   list.className = 'checklist';
+  listWrap.appendChild(list);
   wrap.appendChild(searchWrap);
-  wrap.appendChild(list);
+  wrap.appendChild(listWrap);
 
   const input = searchWrap.querySelector('#add-songs-search');
   input.placeholder = t('searchPlaceholder');
 
+  const buildChecklistItem = (song, sourceKey, hasNumbers) => {
+    const li = document.createElement('li');
+    li.dataset.songKey = `${sourceKey}:${song.id}`;
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'checklist-item';
+    item.setAttribute('aria-pressed', String(isSongInPlaylist(playlistId, sourceKey, song.id)));
+    item.innerHTML = `
+      ${hasNumbers ? `<span class="checklist-badge">${song.number}</span>` : ''}
+      <span style="flex:1">
+        ${escapeHtml(song.title)}
+        ${song.artist ? `<div class="checklist-item-sub">${escapeHtml(song.artist)}</div>` : ''}
+      </span>
+      <span class="checklist-check"><svg data-icon="check" viewBox="0 0 24 24"></svg></span>
+    `;
+    item.addEventListener('click', () => {
+      const nowIn = toggleSongInPlaylist(playlistId, sourceKey, song.id);
+      item.setAttribute('aria-pressed', String(nowIn));
+      if (state.activeSong && state.activeSong.id === song.id) updateFavoriteButtonUI();
+      renderPlaylistView();
+      document.getElementById('pv-count').textContent = t('playlistSongCount', getPlaylist(playlistId).songs.length);
+    });
+    li.appendChild(item);
+    return li;
+  };
+
+  let firstRender = true;
   const renderItems = () => {
     const q = input.value.trim().toLowerCase();
     const sourceKey = state.activeDbSource;
     const songs = sortSongs(state.sources[sourceKey].songs.filter(s => matchesQuery(s, q)), q, sourceKey);
     const hasNumbers = (DB_SOURCES[sourceKey] || {}).hasNumbers !== false;
-    list.innerHTML = '';
-    songs.forEach(song => {
-      const inIt = isSongInPlaylist(playlistId, sourceKey, song.id);
-      const li = document.createElement('li');
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'checklist-item';
-      item.setAttribute('aria-pressed', String(inIt));
-      item.innerHTML = `
-        ${hasNumbers ? `<span class="checklist-badge">${song.number}</span>` : ''}
-        <span style="flex:1">
-          ${escapeHtml(song.title)}
-          ${song.artist ? `<div class="checklist-item-sub">${escapeHtml(song.artist)}</div>` : ''}
-        </span>
-        <span class="checklist-check"><svg data-icon="check" viewBox="0 0 24 24"></svg></span>
-      `;
-      item.addEventListener('click', () => {
-        const nowIn = toggleSongInPlaylist(playlistId, sourceKey, song.id);
-        item.setAttribute('aria-pressed', String(nowIn));
-        if (state.activeSong && state.activeSong.id === song.id) updateFavoriteButtonUI();
-        renderPlaylistView();
-        document.getElementById('pv-count').textContent = t('playlistSongCount', getPlaylist(playlistId).songs.length);
-      });
-      li.appendChild(item);
-      list.appendChild(li);
+
+    if (firstRender || prefersReducedMotion()) {
+      // Plain build for the very first render (opening the modal shouldn't
+      // animate its own initial contents in) and for reduced-motion.
+      firstRender = false;
+      list.innerHTML = '';
+      songs.forEach(song => list.appendChild(buildChecklistItem(song, sourceKey, hasNumbers)));
+      initIcons(list);
+      return;
+    }
+
+    // Diffed render, same approach as renderSongList's search results:
+    // only rows actually entering or leaving the filtered results fade —
+    // a row present both before and after this keystroke is reused as-is
+    // instead of being torn down and rebuilt, so it never flickers.
+    const existingItems = new Map();
+    Array.from(list.children).forEach(li => {
+      if (li.dataset.songKey) existingItems.set(li.dataset.songKey, li);
     });
+
+    const startHeight = listWrap.getBoundingClientRect().height;
+    const fragment = document.createDocumentFragment();
+    const keptKeys = new Set();
+
+    songs.forEach(song => {
+      const key = `${sourceKey}:${song.id}`;
+      keptKeys.add(key);
+      let li = existingItems.get(key);
+      if (li) {
+        if (li.dataset.state === 'exiting') {
+          delete li.dataset.state;
+          li.classList.remove('song-row-exit');
+          if (li._exitCleanup) {
+            li.removeEventListener('animationend', li._exitCleanup);
+            li._exitCleanup = null;
+          }
+        }
+        li.firstElementChild.setAttribute('aria-pressed', String(isSongInPlaylist(playlistId, sourceKey, song.id)));
+      } else {
+        li = buildChecklistItem(song, sourceKey, hasNumbers);
+        li.classList.add('song-row-enter');
+        li.addEventListener('animationend', function onEnd() {
+          li.classList.remove('song-row-enter');
+          li.removeEventListener('animationend', onEnd);
+        }, { once: true });
+      }
+      fragment.appendChild(li);
+    });
+
+    // Whatever's left fell out of the results — fade it out and shrink the
+    // popup the rest of the way down once it's actually gone, instead of
+    // cutting it (and the space it took up) instantly.
+    existingItems.forEach((li, key) => {
+      if (keptKeys.has(key) || li.dataset.state === 'exiting') return;
+      li.dataset.state = 'exiting';
+      li.classList.add('song-row-exit');
+      const cleanup = () => {
+        li.removeEventListener('animationend', cleanup);
+        li._exitCleanup = null;
+        const startH = listWrap.getBoundingClientRect().height;
+        li.remove();
+        listWrap.style.height = 'auto'; // momentarily un-clip so scrollHeight below reads the true post-removal size, not a still-mid-transition inline height
+        animateWrapHeightTo(listWrap, listWrap.scrollHeight, startH);
+      };
+      li._exitCleanup = cleanup;
+      li.addEventListener('animationend', cleanup);
+    });
+
+    list.insertBefore(fragment, list.firstChild);
     initIcons(list);
+
+    // FLIP the popup's height from what it was a moment ago to what the
+    // list actually occupies now (rows still fading out are still in the
+    // DOM, so they still count) — smooths over the "popup changes shape
+    // drastically" jump a plain height snap would otherwise cause.
+    listWrap.style.height = 'auto'; // see the exit cleanup's comment above on why this precedes the scrollHeight read
+    animateWrapHeightTo(listWrap, listWrap.scrollHeight, startHeight);
   };
   input.addEventListener('input', renderItems);
   renderItems();

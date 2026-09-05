@@ -1,4 +1,4 @@
-# Next Gen Worship — Worship Song App (v3.0.0-beta — User Songs, Song Editor)
+# Next Gen Worship — Worship Song App (v3.0.3-beta — User Songs, Song Editor)
 
 An offline-first worship songbook PWA. Static HTML/CSS/JS, no build step, no
 backend — built to run on GitHub Pages and install like a native app.
@@ -451,22 +451,30 @@ Put together, the full on-screen version reads **v2.0.23-beta**.
   - *(no tag)* — stable. This is what a version number with nothing after
     it means: not "untested," but "past all of the above."
 
-Set via `SONGBOOK_VERSION_PRERELEASE` in `version.js` (e.g. `'beta.1'`,
-`'rc.1'`, or `''` for stable). The trailing `.1` is a build number within
-that stage — bump it (`'beta.2'`, `'beta.3'`, …) for a re-cut of the same
-pre-release stage that doesn't warrant moving `SONGBOOK_VERSION_NUMBER`
-itself, so `CACHE_VERSION` still changes and devices still pick up the new
-build. The on-screen label only shows the stage name (`-beta`, `-rc`), not
-the build number — that distinction only needs to be visible in the cache
-tag, not to the person using the app.
+Set via `SONGBOOK_VERSION_PRERELEASE` in `version.js` (e.g. `'beta'`, `'rc'`,
+or `''` for stable) — just the stage name, with **no trailing build
+number**. Earlier versions of this app used a `beta.1` / `beta.2` / `beta.3`
+… counter so a re-cut of the same pre-release stage could still change
+`CACHE_VERSION` (and so still reach devices) without moving
+`SONGBOOK_VERSION_NUMBER` itself. That's no longer how this works: **every**
+release that ships changed files bumps `SONGBOOK_VERSION_NUMBER`'s patch
+digit, including what would previously have just been a same-stage re-cut —
+`3.0.3-beta` is followed by `3.0.4-beta`, then `3.0.5-beta`, and so on, never
+by `3.0.3-beta.2`. This keeps the on-screen version and the cache tag
+identical (previously the label hid the build number, e.g. both `beta.1`
+and `beta.2` displayed as just `-beta`), so the number a user can see and
+report is always the exact build they're running.
 
 ### Updating the app later
 
 Bump `SONGBOOK_VERSION_NUMBER` at the top of `version.js` whenever you ship
 changed files. That's the **only** place a version number needs to be
-edited — everything else derives from it automatically. Update
-`SONGBOOK_VERSION_PRERELEASE` in the same file too (e.g. `'beta.1'`, or
-`''` for a stable release) if that needs to change.
+edited — everything else derives from it automatically. This now includes
+what used to be "just a beta re-cut": there's no more `beta.1` → `beta.2`
+counter to bump instead, so even a same-stage re-release moves the patch
+digit (`3.0.3-beta` → `3.0.4-beta`). Update `SONGBOOK_VERSION_PRERELEASE`
+in the same file too (e.g. `'beta'`, or `''` for a stable release) only
+when the pre-release *stage* itself changes.
 
 #### Why the version number matters — and why it's a single source of truth
 

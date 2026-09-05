@@ -86,6 +86,24 @@
   --radius-m: 14px;
   --radius-l: 22px;
 
+  /* Shared "press pop" family (see the universal button-pop rule near the
+     bottom of this file) — one duration/easing pair so every button's
+     press feedback stays in the same family, plus two scale amounts
+     rather than one. A single hardcoded scale for every button looks
+     inconsistent in practice: shrinking a ~30px icon button by 7% moves a
+     couple of pixels and reads as subtle, but shrinking a ~90px pill
+     button (sort chips, segmented control, primary/secondary CTAs) by
+     the same 7% moves several times as many pixels and reads as a much
+     bigger, jumpier animation — same code, very different felt size.
+     --press-scale-icon is for small icon-only controls; --press-scale-pill
+     is the gentler amount for wider text/pill controls, so both feel
+     equally "subtle" despite the size difference. */
+  --press-ease: cubic-bezier(.34, 1.56, .64, 1);
+  --press-duration-in: .08s;
+  --press-duration-out: .24s;
+  --press-scale-icon: 0.93;
+  --press-scale-pill: 0.97;
+
   /* Shared side margin for .page-inner (and anything, like the sticky
      song-view topbar, that needs to break out to full-bleed and match it
      exactly via a negative margin). Narrowed on small phones — see
@@ -584,7 +602,7 @@ body.nav-hidden .page-inner {
   padding: 7px 13px;
   border-radius: 999px;
   cursor: pointer;
-  transition: background .15s, color .15s, border-color .15s, transform .24s cubic-bezier(.34, 1.56, .64, 1);
+  transition: background .15s, color .15s, border-color .15s, transform var(--press-duration-out) var(--press-ease);
 }
 .sort-btn[aria-pressed="true"] {
   background: var(--ink);
@@ -897,12 +915,21 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 
 /* Compact two-option segmented control — used for the chord chip/text
    display toggle, sized to sit inline in a .font-group next to a label
-   the same way the A−/A+ chip-btn pairs do. */
+   the same way the A−/A+ chip-btn pairs do.
+   border-radius uses --radius-m (the same rounding as cards elsewhere in
+   the app) rather than a full 999px stadium. At this control's height, a
+   999px cap makes each end curve inward before it reaches the button's
+   own horizontal padding — the curve eats into that padding on top of it,
+   not instead of it — which reads fine on the selected (filled) segment
+   because the fill hides it, but reads as odd left-over whitespace on an
+   unselected segment where there's no fill to hide it behind. --radius-m
+   is gentle enough not to trigger that, while still matching the rest of
+   the .seg-toggle-btn / .seg-toggle-thumb radii below. */
 .seg-toggle {
   display: flex;
   position: relative; /* anchors .seg-toggle-thumb below */
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-m);
   padding: 2px;
   background: var(--paper);
   flex-shrink: 0;
@@ -918,7 +945,7 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   position: absolute;
   top: 2px; bottom: 2px; left: 0;
   width: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-m);
   background: var(--accent-strong);
   z-index: 0;
   pointer-events: none;
@@ -941,7 +968,7 @@ html[data-theme="dark"] .seg-toggle-thumb { background: var(--accent); }
   font-size: 0.72rem;
   font-weight: 600;
   padding: 5px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-m);
   cursor: pointer;
   line-height: 1.2;
   transition: color .2s ease;
@@ -1587,8 +1614,8 @@ html[data-theme="dark"] .btn-primary { background: var(--accent); color: var(--p
   font-weight: 600;
   cursor: pointer;
 }
-.nav-btn { transition: color .18s ease, transform .24s cubic-bezier(.34, 1.56, .64, 1); }
-.nav-btn:active { transform: scale(0.93); transition-duration: .08s; }
+.nav-btn { transition: color .18s ease, transform var(--press-duration-out) var(--press-ease); }
+.nav-btn:active { transform: scale(var(--press-scale-icon)); transition-duration: var(--press-duration-in); }
 .nav-btn svg { width: 23px; height: 23px; fill: var(--ink-faint); transition: fill .18s ease, transform .22s cubic-bezier(.34, 1.56, .64, 1); }
 .nav-btn.is-active { color: var(--accent-strong); }
 .nav-btn.is-active svg { fill: var(--accent-strong); transform: scale(1.08); }
@@ -1657,20 +1684,37 @@ html[data-theme="dark"] .toast {
    bounce, no separate keyframe needed. transition-duration is shortened
    on :active so the press itself feels immediate; releasing uses the
    slower, bouncy duration from the base rule.
-   .song-row/.playlist-row/.switch/.checklist-item/.modal-new-playlist-row
-   keep their own existing :active treatment (scale(.99) / knob slide)
-   instead of this, so they're excluded here rather than getting a second,
-   conflicting transform — the 93% pop reads fine on a small icon button
-   but looks like an unpleasant squish on a full-width row like a
-   checklist item. */
-button:where(:not(.song-row):not(.playlist-row):not(.switch):not(.checklist-item):not(.modal-new-playlist-row)) {
-  transition: transform .24s cubic-bezier(.34, 1.56, .64, 1);
+   .song-row/.playlist-row/.switch/.checklist-item/.modal-new-playlist-row/
+   .settings-row-nav keep their own existing :active treatment (scale(.99)
+   / knob slide / background change) instead of this, so they're excluded
+   here rather than getting a second, conflicting transform — the 93% pop
+   reads fine on a small icon button but looks like an unpleasant squish
+   on a full-width row like a checklist item (or the About/dev-options
+   settings row). Tokens: see --press-* in :root above. */
+button:where(:not(.song-row):not(.playlist-row):not(.switch):not(.checklist-item):not(.modal-new-playlist-row):not(.settings-row-nav)) {
+  transition: transform var(--press-duration-out) var(--press-ease);
 }
-button:where(:not(.song-row):not(.playlist-row):not(.switch):not(.checklist-item):not(.modal-new-playlist-row)):active {
-  transform: scale(0.93);
-  transition-duration: .08s;
+button:where(:not(.song-row):not(.playlist-row):not(.switch):not(.checklist-item):not(.modal-new-playlist-row):not(.settings-row-nav)):active {
+  transform: scale(var(--press-scale-icon));
+  transition-duration: var(--press-duration-in);
 }
 button:disabled { transform: none !important; }
+
+/* Wider text/pill buttons get the same press family as the universal pop
+   above, but the gentler --press-scale-pill amount instead of
+   --press-scale-icon — see the token comment in :root for why: the same
+   percentage shrink moves a lot more pixels on a ~90px pill than a ~30px
+   icon button, so without this override these buttons "pop" much harder
+   than everything else even though they share the same code path
+   (this is what made the sort-row buttons feel oversized before). Class
+   selectors here beat the :where()-based universal rule's zero
+   specificity regardless of source order, so this always wins for the
+   buttons it lists. */
+.sort-btn:active, .seg-toggle-btn:active, .btn-pill-toggle:active,
+.btn-primary:active, .btn-secondary:active {
+  transform: scale(var(--press-scale-pill));
+  transition-duration: var(--press-duration-in);
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
@@ -1784,7 +1828,7 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
   padding: 9px 14px;
   border-radius: 999px;
   cursor: pointer;
-  transition: background .15s, color .15s, border-color .15s, transform .24s cubic-bezier(.34, 1.56, .64, 1);
+  transition: background .15s, color .15s, border-color .15s, transform var(--press-duration-out) var(--press-ease);
 }
 .btn-pill-toggle[aria-pressed="true"] {
   background: var(--accent-strong);
@@ -1863,6 +1907,28 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
   box-shadow: var(--shadow-2);
   min-width: 160px;
   overflow: hidden;
+  /* Anchored under the kebab button it opens from, so the pop reads as
+     coming from that button rather than from the middle of the menu. */
+  transform-origin: top right;
+  animation: kebab-pop-in .18s cubic-bezier(.2, .8, .2, 1) both;
+}
+/* Added by closePlaylistMenu()/closeSongViewMenu() instead of removing the
+   element outright — gives the menu an actual close animation (a quick
+   shrink-and-fade back toward the button) rather than just vanishing. A
+   little faster than the open, and eased the other way (accelerating
+   in), which is what makes a dismissal read as intentional rather than
+   as a delayed version of the same open motion. */
+.kebab-dropdown.kebab-dropdown-exit {
+  animation: kebab-pop-out .14s cubic-bezier(.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+@keyframes kebab-pop-in {
+  from { opacity: 0; transform: scale(.9) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes kebab-pop-out {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to   { opacity: 0; transform: scale(.92) translateY(-4px); }
 }
 .kebab-dropdown button {
   display: flex;
@@ -1959,6 +2025,13 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
 .modal-hint { font-size: 0.82rem; color: var(--ink-faint); margin: 4px 2px 0; }
 
 .checklist { list-style: none; margin: 8px 0 0; padding: 0; }
+/* Wraps the Add Songs modal's search results (see openAddSongsModal /
+   animateWrapHeightTo in app.js) so the popup's height can be animated
+   smoothly as the result count changes on every keystroke, instead of the
+   whole modal snapping to its new size. overflow:hidden is what makes the
+   height transition actually clip content rather than just resize an
+   already-visible overflow. */
+.add-songs-list-wrap { overflow: hidden; }
 .checklist-item {
   display: flex;
   align-items: center;
