@@ -603,20 +603,40 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
   margin: 14px 2px 6px;
 }
 
-/* Quick opacity/translate dip-and-recover, retriggered (see
-   animateListRefresh() in app.js) on every keystroke in a search box and
-   on every sort-order change. The underlying re-render is still
-   synchronous/instant — filtering never waits on this — this is purely a
-   visual layer on top so the swapped-in results read as a smooth fade
-   rather than an abrupt cut. Applied to the list, its empty-state message,
-   and its result count together so whichever of those is actually showing
-   settles in sync with the others. */
+/* Fallback flash (see animateListRefresh() in app.js) used only for the
+   rare "source failed to load" branch of renderSongList, where there's no
+   per-song list to diff against — just the list/empty-state/count settling
+   in together. Ordinary search and sort updates use the per-row
+   song-row-enter/song-row-exit animations below instead (see
+   renderSongList's diffed render). */
 @keyframes list-refresh-flash {
   from { opacity: .3; transform: translateY(3px); }
   to   { opacity: 1; transform: none; }
 }
 .list-refresh-flash {
-  animation: list-refresh-flash .24s cubic-bezier(.22, .61, .36, 1);
+  animation: list-refresh-flash .32s cubic-bezier(.22, .61, .36, 1);
+}
+
+/* Per-row fade for search/sort updates (see renderSongList's diffed
+   render in app.js): only songs actually entering or leaving the visible
+   results animate — rows that match both before and after are just
+   reused/reordered in place with no fade at all. Slower and gentler than
+   the old whole-list flash (which retriggered on every keystroke) so
+   typing quickly in search doesn't strobe. */
+@keyframes song-row-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes song-row-exit {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.song-row-enter {
+  animation: song-row-enter .42s cubic-bezier(.25, .1, .25, 1);
+}
+.song-row-exit {
+  animation: song-row-exit .32s ease-out;
+  pointer-events: none;
 }
 
 /* ---------- song list ---------- */
@@ -728,15 +748,15 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
 }
 .icon-btn svg { width: 20px; height: 20px; fill: var(--ink); }
 
-/* The favorite/add-to-playlist buttons sit right next to the title and
-   weren't there when the title's width budget was originally tuned — on
-   narrow phones that leaves noticeably less room for the title than
-   before, pushing long titles to an extra wrapped line. Trimming just
-   these two (not every icon-btn — the back button stays full-size, same
-   as playlist-view's) claws a little of that width back for the title
+/* The favorite/menu buttons sit right next to the title and weren't
+   there when the title's width budget was originally tuned — on narrow
+   phones that leaves noticeably less room for the title than before,
+   pushing long titles to an extra wrapped line. Trimming just these two
+   (not every icon-btn — the back button stays full-size, same as
+   playlist-view's) claws a little of that width back for the title
    without shrinking anything the person actually taps most. */
-#sv-favorite-btn, #sv-add-playlist-btn { width: 34px; height: 34px; }
-#sv-favorite-btn svg, #sv-add-playlist-btn svg { width: 18px; height: 18px; }
+#sv-favorite-btn, #sv-menu-btn { width: 34px; height: 34px; }
+#sv-favorite-btn svg, #sv-menu-btn svg { width: 18px; height: 18px; }
 
 .song-view-title { flex: 1; min-width: 0; padding-top: 2px; }
 .sv-number {
@@ -992,6 +1012,12 @@ html[data-theme="dark"] .seg-toggle-btn[aria-pressed="true"] { color: var(--pape
   gap: var(--lyric-line-gap) 0.3em;
   margin-bottom: var(--lyric-line-mb);
   line-height: var(--lyric-line-lh);
+  /* Settings → Appearance's line-spacing toggle only swaps the
+     --lyric-line-* custom properties above (see the
+     html[data-lyrics-spacing] overrides below) — it never rebuilds these
+     elements — so without a transition here the rhythm change snaps
+     instantly instead of easing, feeling like a jump cut. */
+  transition: margin-bottom .22s ease, line-height .22s ease, gap .22s ease;
 }
 /* A line with no chords at all (see renderLyrics) has nothing to reserve
    the chord row's height for, so it drops the tight chord-chart rhythm
@@ -1088,6 +1114,15 @@ html[data-lyrics-spacing="loose"] {
   align-self: flex-start;
   box-shadow: 0 1px 0 rgba(0,0,0,0.08);
   transform: translateY(0);
+  /* Settings → Appearance's Chips/Text toggle (below) and the line-spacing
+     toggle (--lyric-chord-mb) only flip an attribute/custom-property —
+     they never rebuild these elements — so without a transition here the
+     chip-to-text swap snaps instantly instead of easing. transform is
+     deliberately left out of this list: chord-pop's own animation below
+     already drives it on transpose, and mixing a transition into that
+     property would fight it. */
+  transition: color .22s ease, background-color .22s ease, padding .22s ease,
+    border-radius .22s ease, box-shadow .22s ease, margin-bottom .22s ease;
 }
 /* "Text" chord style (opt-in via the Chips/Text toggle in font-controls):
    the traditional WorshipLeader/OnSong/ChordPro convention — chords sit
@@ -1109,7 +1144,10 @@ html[data-chord-style="text"] .chord-tag {
    same padding/margin the tag itself now uses, including the
    --lyric-chord-mb spacing-mode variable, so the two never drift out of
    sync as the chip or the spacing option above changes. */
-.chord-tag-spacer { height: calc(var(--chord-size) + var(--lyric-chord-mb) + 1px); }
+.chord-tag-spacer {
+  height: calc(var(--chord-size) + var(--lyric-chord-mb) + 1px);
+  transition: height .22s ease; /* keeps pace with .lyric-line's margin/gap transition above when line spacing changes */
+}
 
 /* Hide chords (opt-in via the switch under the Chord style toggle):
    chords stay in the song data and the Chips/Text choice is preserved
@@ -1156,6 +1194,12 @@ html[data-hide-chords="true"] .lyric-line {
   min-width: 0;
   max-width: 100%;
   overflow-wrap: break-word;
+  /* Settings → Appearance's lyrics-style toggle below only flips an
+     attribute — it never rebuilds these elements — so without a
+     transition the weight change snaps instantly. Numeric font-weight
+     transitions are well supported in current browsers; where they
+     aren't, this just falls back to an instant change, same as before. */
+  transition: font-weight .22s ease;
 }
 /* Lyrics style (Settings → Appearance → Lyrics style): font weight for
    lyric text only — chords, chrome, and everything else are untouched.
@@ -1613,13 +1657,16 @@ html[data-theme="dark"] .toast {
    bounce, no separate keyframe needed. transition-duration is shortened
    on :active so the press itself feels immediate; releasing uses the
    slower, bouncy duration from the base rule.
-   .song-row/.playlist-row/.switch keep their own existing :active
-   treatment (scale(.99) / knob slide) instead of this, so they're
-   excluded here rather than getting a second, conflicting transform. */
-button:where(:not(.song-row):not(.playlist-row):not(.switch)) {
+   .song-row/.playlist-row/.switch/.checklist-item/.modal-new-playlist-row
+   keep their own existing :active treatment (scale(.99) / knob slide)
+   instead of this, so they're excluded here rather than getting a second,
+   conflicting transform — the 93% pop reads fine on a small icon button
+   but looks like an unpleasant squish on a full-width row like a
+   checklist item. */
+button:where(:not(.song-row):not(.playlist-row):not(.switch):not(.checklist-item):not(.modal-new-playlist-row)) {
   transition: transform .24s cubic-bezier(.34, 1.56, .64, 1);
 }
-button:where(:not(.song-row):not(.playlist-row):not(.switch)):active {
+button:where(:not(.song-row):not(.playlist-row):not(.switch):not(.checklist-item):not(.modal-new-playlist-row)):active {
   transform: scale(0.93);
   transition-duration: .08s;
 }
@@ -1692,19 +1739,19 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
 #sv-favorite-btn { margin-left: auto; }
 /* Retriggered on every tap (see the sv-favorite-btn click handler in
    app.js, which swaps heart-outline/heart-filled just before this runs) —
-   a full spin with a bit of scale overshoot on the way, in both directions
-   (favoriting and unfavoriting), rather than the icon just silently
-   swapping. Targets the svg, not the button itself, so the button's own
-   universal press-pop (scale on :active, see the focus & motion section)
-   keeps working independently without the two transforms fighting. */
-@keyframes heart-spin-pop {
-  0%   { transform: scale(1) rotate(0deg); }
-  35%  { transform: scale(1.32) rotate(160deg); }
-  65%  { transform: scale(0.92) rotate(300deg); }
-  100% { transform: scale(1) rotate(360deg); }
+   a quick, gentle scale pop so the swap reads as an intentional change
+   rather than a silent icon swap, without the rotation the earlier
+   version had (that full spin read as jittery rather than smooth).
+   Targets the svg, not the button itself, so the button's own universal
+   press-pop (scale on :active, see the focus & motion section) keeps
+   working independently without the two transforms fighting. */
+@keyframes heart-pop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.22); }
+  100% { transform: scale(1); }
 }
 #sv-favorite-btn.heart-pop svg {
-  animation: heart-spin-pop .5s cubic-bezier(.34, 1.56, .64, 1);
+  animation: heart-pop .4s cubic-bezier(.34, 1.56, .64, 1);
 }
 
 /* ---------- playlist-view header ---------- */
@@ -1928,7 +1975,9 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--ink);
+  transition: transform .15s ease-out; /* same subtle press feel as .song-row/.playlist-row, not the universal button pop — see that rule's comment */
 }
+.checklist-item:active { transform: scale(0.99); }
 .checklist-item-sub { font-size: 0.78rem; color: var(--ink-faint); font-weight: 400; margin-top: 1px; }
 .checklist-check {
   flex-shrink: 0;
@@ -1936,8 +1985,9 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
   border-radius: 50%;
   border: 2px solid var(--line);
   display: flex; align-items: center; justify-content: center;
+  transition: background-color .18s ease-out, border-color .18s ease-out;
 }
-.checklist-check svg { width: 14px; height: 14px; fill: var(--paper); opacity: 0; }
+.checklist-check svg { width: 14px; height: 14px; fill: var(--paper); opacity: 0; transition: opacity .18s ease-out; }
 .checklist-item[aria-pressed="true"] .checklist-check {
   background: var(--accent-strong);
   border-color: var(--accent-strong);
@@ -1975,7 +2025,9 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
   font-size: 0.92rem;
   font-weight: 600;
   color: var(--accent-strong);
+  transition: transform .15s ease-out; /* same subtle press feel as .checklist-item, not the universal button pop */
 }
+.modal-new-playlist-row:active { transform: scale(0.99); }
 .modal-new-playlist-row svg { width: 16px; height: 16px; fill: currentColor; }
 
 .modal-search {

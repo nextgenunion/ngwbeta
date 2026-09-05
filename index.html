@@ -179,14 +179,10 @@
     <button id="sv-favorite-btn" class="icon-btn" aria-label="Add to favorites" aria-pressed="false">
       <svg data-icon="heart-outline" viewBox="0 0 24 24"></svg>
     </button>
-    <button id="sv-add-playlist-btn" class="icon-btn" aria-label="Add to playlist">
-      <svg data-icon="plus" viewBox="0 0 24 24"></svg>
-    </button>
-    <!-- Only shown when the open song came from state.sources.user (see
-         updateSongViewMenuUI()) — official songs aren't editable, so this
-         stays hidden for them rather than showing a menu with nothing
-         useful in it. -->
-    <button id="sv-menu-btn" class="icon-btn" aria-label="Song options" hidden>
+    <!-- Always shown now — "Add to playlist" lives in here for every song,
+         with Edit/Delete added on top only when the open song came from
+         state.sources.user (see openSongViewMenu()). -->
+    <button id="sv-menu-btn" class="icon-btn" aria-label="Song options">
       <svg data-icon="menu-kebab" viewBox="0 0 24 24"></svg>
     </button>
   </header>

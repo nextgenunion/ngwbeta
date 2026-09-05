@@ -1932,7 +1932,6 @@ function renderSongList(opts = {}) {
     ? t('resultsAll', filtered.length)
     : t('resultsFiltered', filtered.length, source.songs.length);
 
-  listEl.innerHTML = '';
   emptyEl.hidden = filtered.length !== 0;
 
   // Some sources' songs have no `number` field at all (see DB_SOURCES'
@@ -1946,30 +1945,109 @@ function renderSongList(opts = {}) {
   const hasNumbers = sourceKey === 'user' ? false : (DB_SOURCES[sourceKey] || {}).hasNumbers !== false;
 
   const q = query;
-  filtered.forEach(song => {
-    const li = document.createElement('li');
-    const row = document.createElement('button');
-    row.className = 'song-row';
-    row.innerHTML = `
-      ${hasNumbers ? `<span class="song-badge">${song.number}</span>` : ''}
-      <span class="song-row-text">
-        <span class="song-row-title">${highlight(song.title, q)}</span>
-        ${song.artist ? `<span class="song-row-sub">${escapeHtml(song.artist)}</span>` : ''}
-      </span>
-    `;
-    row.addEventListener('click', () => openSong(song, { sourceKey }));
-    li.appendChild(row);
-    listEl.appendChild(li);
+
+  if (!animate || prefersReducedMotion()) {
+    // Plain rebuild for non-search-driven renders (tab visits, db switch,
+    // language change, reduced-motion) — nothing is animating, so there's
+    // no reason to pay for the diff below.
+    listEl.innerHTML = '';
+    filtered.forEach(song => listEl.appendChild(buildSongRow(song, hasNumbers, q, sourceKey)));
+    return;
+  }
+
+  // Diffed render: only songs that are newly appearing or dropping out of
+  // the results fade — anything present both before and after this render
+  // (the common case, since one keystroke usually only trims a few songs)
+  // is reused as-is and just repositioned, so it never flickers. Rows are
+  // keyed by sourceKey+id rather than id alone so a db switch (which
+  // reuses this same function against a different source but can, in
+  // principle, share this listEl across renders) can never accidentally
+  // treat a same-numbered song from a different source as a match.
+  const existingRows = new Map();
+  Array.from(listEl.children).forEach(li => {
+    if (li.dataset.rowKey) existingRows.set(li.dataset.rowKey, li);
   });
 
-  if (animate) animateListRefresh(listEl, emptyEl, countEl);
+  const fragment = document.createDocumentFragment();
+  const keptKeys = new Set();
+
+  filtered.forEach(song => {
+    const key = `${sourceKey}:${song.id}`;
+    keptKeys.add(key);
+    let li = existingRows.get(key);
+    if (li) {
+      // Already on screen — bring back from a leave-animation if this
+      // song reappeared mid-fade (e.g. one character got backspaced),
+      // and refresh its highlighted title text for the new query.
+      if (li.dataset.state === 'exiting') {
+        delete li.dataset.state;
+        li.classList.remove('song-row-exit');
+        if (li._exitCleanup) {
+          li.removeEventListener('animationend', li._exitCleanup);
+          li._exitCleanup = null;
+        }
+      }
+      updateSongRowContent(li, song, hasNumbers, q);
+    } else {
+      li = buildSongRow(song, hasNumbers, q, sourceKey);
+      li.dataset.rowKey = key;
+      li.classList.add('song-row-enter');
+      li.addEventListener('animationend', function onEnd() {
+        li.classList.remove('song-row-enter');
+        li.removeEventListener('animationend', onEnd);
+      }, { once: true });
+    }
+    fragment.appendChild(li); // detaches reused rows from listEl, leaving only dropped-out ones behind
+  });
+
+  // Whatever's left in listEl now fell out of the results — fade each one
+  // out and remove it once its animation finishes, instead of cutting it
+  // instantly.
+  existingRows.forEach((li, key) => {
+    if (keptKeys.has(key) || li.dataset.state === 'exiting') return;
+    li.dataset.state = 'exiting';
+    li.classList.add('song-row-exit');
+    const cleanup = () => {
+      li.removeEventListener('animationend', cleanup);
+      li._exitCleanup = null;
+      li.remove();
+    };
+    li._exitCleanup = cleanup;
+    li.addEventListener('animationend', cleanup);
+  });
+
+  // New order goes in ahead of anything still fading out, so the visible
+  // results read top-to-bottom correctly while leaving rows finish
+  // underneath.
+  listEl.insertBefore(fragment, listEl.firstChild);
 }
 
-// Quick opacity/translate dip-and-recover, retriggered on every keystroke
-// in a search box and on every sort change (see renderSongList's animate
-// option). The re-render above is already synchronous/instant — this runs
-// after the fact and never delays it — it's purely a visual layer so the
-// swapped-in results read as a smooth fade rather than an abrupt cut.
+function buildSongRow(song, hasNumbers, q, sourceKey) {
+  const li = document.createElement('li');
+  const row = document.createElement('button');
+  row.className = 'song-row';
+  row.addEventListener('click', () => openSong(song, { sourceKey }));
+  li.appendChild(row);
+  updateSongRowContent(li, song, hasNumbers, q);
+  return li;
+}
+
+function updateSongRowContent(li, song, hasNumbers, q) {
+  const row = li.firstElementChild;
+  row.innerHTML = `
+    ${hasNumbers ? `<span class="song-badge">${song.number}</span>` : ''}
+    <span class="song-row-text">
+      <span class="song-row-title">${highlight(song.title, q)}</span>
+      ${song.artist ? `<span class="song-row-sub">${escapeHtml(song.artist)}</span>` : ''}
+    </span>
+  `;
+}
+
+// Whole-block opacity/translate dip-and-recover. Ordinary search/sort
+// updates no longer use this — see the per-row song-row-enter/exit
+// animations in renderSongList's diffed render — but it's kept here for
+// the "source failed to load" branch above, where there's no song list to
+// diff against, just the list/empty-state/count settling in together.
 // Restarting a CSS animation that's already mid-flight needs the
 // remove/reflow/re-add dance (same trick used for the page-slide and
 // heart-pop animations elsewhere in this file), since re-adding a class
@@ -2030,12 +2108,6 @@ function bindSongView() {
     favBtn.addEventListener('animationend', () => favBtn.classList.remove('heart-pop'), { once: true });
   });
 
-  document.getElementById('sv-add-playlist-btn').addEventListener('click', () => {
-    const song = state.activeSong;
-    if (!song) return;
-    openAddToPlaylistModal(state.activeSourceKey, song.id);
-  });
-
   document.getElementById('sv-menu-btn').addEventListener('click', (e) => {
     e.stopPropagation();
     toggleSongViewMenu();
@@ -2043,14 +2115,12 @@ function bindSongView() {
   document.addEventListener('click', () => closeSongViewMenu());
 }
 
-// Shows/hides the "…" menu button itself (edit/delete only make sense for
-// a song the person actually authored) — called from openSong() every
-// time a song opens, and again from applyLanguage() so a language switch
-// doesn't leave a stale menu open across a source it's no longer valid for.
+// The "…" menu itself has no reason to hide anymore — "Add to playlist"
+// applies to every song, official or user-authored — so this is now just
+// a safety net that closes any open dropdown when the active song or
+// language changes out from under it (called from openSong() and again
+// from applyLanguage()).
 function updateSongViewMenuUI() {
-  const btn = document.getElementById('sv-menu-btn');
-  if (!btn) return;
-  btn.hidden = state.activeSourceKey !== 'user';
   closeSongViewMenu();
 }
 
@@ -2061,27 +2131,38 @@ function toggleSongViewMenu() {
 
 function openSongViewMenu() {
   const song = state.activeSong;
-  if (!song || state.activeSourceKey !== 'user') return;
+  if (!song) return;
   closeSongViewMenu();
+  const isUserSong = state.activeSourceKey === 'user';
   const btn = document.getElementById('sv-menu-btn');
   const wrap = document.createElement('div');
   wrap.className = 'kebab-dropdown';
   wrap.id = 'sv-kebab-dropdown';
   wrap.innerHTML = `
+    <button type="button" id="sv-kebab-add-playlist"><svg data-icon="plus" viewBox="0 0 24 24"></svg>${escapeHtml(t('addToPlaylistTitle'))}</button>
+    ${isUserSong ? `
     <button type="button" id="sv-kebab-edit"><svg data-icon="pencil" viewBox="0 0 24 24"></svg>${escapeHtml(t('editBtn'))}</button>
     <button type="button" id="sv-kebab-delete" class="is-danger"><svg data-icon="trash" viewBox="0 0 24 24"></svg>${escapeHtml(t('menuDelete'))}</button>
+    ` : ''}
   `;
   btn.parentElement.style.position = 'relative';
   btn.parentElement.appendChild(wrap);
   initIcons(wrap);
   songViewMenuOpen = true;
 
-  wrap.querySelector('#sv-kebab-edit').addEventListener('click', (e) => {
+  wrap.querySelector('#sv-kebab-add-playlist').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeSongViewMenu();
+    openAddToPlaylistModal(state.activeSourceKey, song.id);
+  });
+  const editBtn = wrap.querySelector('#sv-kebab-edit');
+  if (editBtn) editBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     closeSongViewMenu();
     openSongEditor(song);
   });
-  wrap.querySelector('#sv-kebab-delete').addEventListener('click', (e) => {
+  const deleteBtn = wrap.querySelector('#sv-kebab-delete');
+  if (deleteBtn) deleteBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     closeSongViewMenu();
     confirmDeleteUserSong(song);
