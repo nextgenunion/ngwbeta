@@ -1,4 +1,4 @@
-# Next Gen Worship — Worship Song App (v3.0.3-beta — User Songs, Song Editor)
+# Next Gen Worship — Worship Song App (v3.0.4-beta — User Songs, Song Editor)
 
 An offline-first worship songbook PWA. Static HTML/CSS/JS, no build step, no
 backend — built to run on GitHub Pages and install like a native app.

@@ -1,7 +1,7 @@
 // Single source of truth for the app's version number.
 // Bump SONGBOOK_VERSION_NUMBER here — and ONLY here — on every release that
 // ships changed files. Everything else (the on-screen "Next Gen Worship
-// v3.0.3-beta" label, the service worker's cache-busting tag) is derived
+// v3.0.4-beta" label, the service worker's cache-busting tag) is derived
 // from this one value, so there is no second or third place that can drift
 // out of sync with it.
 //
@@ -15,7 +15,7 @@
 //
 // Format: plain "major.minor.patch". Pre-release/build tags (e.g. "-beta")
 // are handled separately below, not folded into this number.
-var SONGBOOK_VERSION_NUMBER = '3.0.3';
+var SONGBOOK_VERSION_NUMBER = '3.0.4';
 
 // Pre-release label appended to both the on-screen version and the cache
 // tag (e.g. 'beta', 'rc', or '' for a stable, non-beta release).
@@ -33,15 +33,15 @@ var SONGBOOK_VERSION_PRERELEASE = 'beta';
 
 // Derived — do not edit below this line.
 
-// On-screen label, e.g. "v3.0.3-beta" (shown as "Next Gen Worship
-// v3.0.3-beta" via versionSub(v) in every lang/*.js file on the About
+// On-screen label, e.g. "v3.0.4-beta" (shown as "Next Gen Worship
+// v3.0.4-beta" via versionSub(v) in every lang/*.js file on the About
 // page). Reuses SONGBOOK_VERSION_PRERELEASE below so the label and the
 // cache tag can never drift to different pre-release suffixes.
 var SONGBOOK_APP_VERSION =
   'v' + SONGBOOK_VERSION_NUMBER +
   (SONGBOOK_VERSION_PRERELEASE ? '-' + SONGBOOK_VERSION_PRERELEASE : '');
 
-// Service-worker cache bucket name, e.g. "songbook-v3.0.3-beta".
+// Service-worker cache bucket name, e.g. "songbook-v3.0.4-beta".
 // Changing this string is what makes caches.open() start a fresh cache and
 // evict the old one — see the comment above CACHE_VERSION's use in
 // service-worker.js for why that matters. Now that SONGBOOK_VERSION_PRERELEASE

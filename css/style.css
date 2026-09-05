@@ -940,12 +940,28 @@ html[data-theme="dark"] .sort-btn[aria-pressed="true"] {
    the pressed button's real offsetWidth so it works for options of
    different widths (Normal/Semibold/Bold) same as equal ones (Chips/Text).
    Sits at z-index:0, under the (position:relative, z-index:1) buttons —
-   see .seg-toggle-btn below — so the label text always reads on top of it. */
+   see .seg-toggle-btn below — so the label text always reads on top of it.
+
+   left:2px matches the container's own 2px padding on every other side
+   (top/bottom here, and the JS-set width implicitly on the right) — it
+   was previously left:0, which measured the thumb from the *border* edge
+   while the buttons it's meant to sit under start 2px further in, at the
+   *padding* edge. positionSegToggleThumb()'s translateX only ever
+   corrects for the gap *between* segments (pressed vs. the first button),
+   not this shared base offset, so every thumb — including the very first
+   segment — sat 2px left of where it should, which then reads as an
+   overshoot past the right edge on whichever segment is actually
+   selected, and as the label inside it looking off-center. border-radius
+   is inset by that same 2px so its curve stays concentric with the
+   container's — matching the raw --radius-m value here instead looks
+   more rounded than the container at each corner (a smaller box, same
+   nominal radius) and leaves a sliver of the track's background visible
+   right at the corners. */
 .seg-toggle-thumb {
   position: absolute;
-  top: 2px; bottom: 2px; left: 0;
+  top: 2px; bottom: 2px; left: 2px;
   width: 0;
-  border-radius: var(--radius-m);
+  border-radius: calc(var(--radius-m) - 2px);
   background: var(--accent-strong);
   z-index: 0;
   pointer-events: none;
@@ -1295,6 +1311,12 @@ html[data-lyrics-weight="bold"] .lyric-word { font-weight: 700; }
 .settings-row-text { display: flex; flex-direction: column; min-width: 0; }
 .settings-row-title { font-size: 0.96rem; font-weight: 600; color: var(--ink); }
 .settings-row-sub { font-size: 0.8rem; color: var(--ink-faint); margin-top: 2px; }
+/* Hide setting descriptions (Developer options) — see applyDevOptions()
+   in app.js. Only rows explicitly marked .settings-desc-hideable in
+   index.html are affected; other settings-row-sub text (Playlists
+   backup, Reload library, the About page's own description, etc.) is
+   untouched regardless of this toggle. */
+html[data-hide-setting-desc] .settings-desc-hideable { display: none; }
 .settings-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .settings-row-actions .btn-secondary { white-space: nowrap; }
 
@@ -1958,6 +1980,16 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
  * covering, which is what pushed/clipped the sheet. Falling back to
  * 100vh/0 keeps desktop and older browsers unaffected.
  */
+/* opacity/transition here (rather than relying on [hidden]'s display
+   toggle alone) is what lets the dark backdrop fade in/out — see
+   openModal()/closeModal() in app.js, which flip this between 0 and its
+   resting 1 on a rAF so the transition actually has a "from" state to
+   animate out of. Previously there was no transition at all: the
+   backdrop just snapped straight to fully dark the instant the overlay's
+   `hidden` attribute was cleared, and closeModal() removed everything
+   instantly with no animation in either direction — the two together
+   are what read as "sudden" regardless of how smooth a modal's own
+   contents (e.g. openAddSongsModal's search results) are. */
 .modal-overlay {
   position: fixed;
   top: var(--vv-top, 0px);
@@ -1968,6 +2000,8 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
   background: color-mix(in srgb, #000 45%, transparent);
   align-items: flex-end;
   justify-content: center;
+  opacity: 1;
+  transition: opacity .18s ease;
 }
 .modal-overlay[hidden] { display: none; }
 .modal-overlay:not([hidden]) { display: flex; }
@@ -1986,6 +2020,18 @@ html[data-theme="dark"] .playlist-row.is-favorites .playlist-icon { background: 
 @keyframes modal-slide-up {
   from { transform: translateY(24px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+/* Added by closeModal() alongside the overlay's opacity fade, so the
+   sheet itself visibly retreats (shrinks back down, slightly faster than
+   the slide-up it came in on — see kebab-pop-out's comment for the same
+   "dismissal should read as snappier than the open" reasoning) instead
+   of just vanishing the instant the backdrop fade finishes. */
+.modal-overlay-closing .modal-card {
+  animation: modal-slide-down .16s cubic-bezier(.4, 0, 1, 1) both;
+}
+@keyframes modal-slide-down {
+  from { transform: translateY(0); opacity: 1; }
+  to   { transform: translateY(16px); opacity: 0; }
 }
 @media (min-width: 560px) {
   .modal-overlay { align-items: center; }

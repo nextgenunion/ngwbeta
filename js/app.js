@@ -163,6 +163,7 @@ const state = {
   devPartyForced: false,
   devTradMongolian: false, // see refreshLangPicker()
   devCredits: false,       // see renderCredits()
+  devHideDescriptions: false, // see applyDevOptions() — toggles .settings-desc-hideable
 };
 
 // Registry of every page the router (showPage/bindNav) knows about. Adding
@@ -1332,6 +1333,14 @@ function applyDevOptions() {
   const creditsToggle = document.getElementById('dev-credits-toggle');
   if (creditsToggle) creditsToggle.setAttribute('aria-checked', String(state.devCredits));
   renderCredits();
+
+  // Hides the description line under a specific, curated set of settings
+  // rows (see the .settings-desc-hideable class in index.html — NOT every
+  // .settings-row-sub in the app) — a density option for people who
+  // already know what each row does and just want the list more compact.
+  const hideDescToggle = document.getElementById('dev-hide-desc-toggle');
+  if (hideDescToggle) hideDescToggle.setAttribute('aria-checked', String(state.devHideDescriptions));
+  document.documentElement.toggleAttribute('data-hide-setting-desc', state.devHideDescriptions);
 }
 
 function initDevOptions() {
@@ -1360,6 +1369,10 @@ function initDevOptions() {
   });
   document.getElementById('dev-credits-toggle').addEventListener('click', () => {
     state.devCredits = !state.devCredits;
+    applyDevOptions();
+  });
+  document.getElementById('dev-hide-desc-toggle').addEventListener('click', () => {
+    state.devHideDescriptions = !state.devHideDescriptions;
     applyDevOptions();
   });
 }
@@ -1460,6 +1473,8 @@ function applyLanguage() {
     't-devTradMongolianSub': 'devTradMongolianSub',
     't-devCreditsTitle': 'devCreditsTitle',
     't-devCreditsSub': 'devCreditsSub',
+    't-devHideDescTitle': 'devHideDescTitle',
+    't-devHideDescSub': 'devHideDescSub',
   };
   Object.entries(map).forEach(([id, key]) => {
     const el = document.getElementById(id);
@@ -3391,19 +3406,77 @@ function commitPlaylistOrderFromDom() {
 // ---------------------------------------------------------
 // Shared modal shell
 // ---------------------------------------------------------
+// This one overlay/card pair is reused for every modal in the app (Add
+// Songs, rename/create playlist, etc.) — see bindModalShell() below.
 function openModal(title, bodyEl) {
   document.getElementById('modal-title').textContent = title;
   const body = document.getElementById('modal-body');
   body.innerHTML = '';
   body.appendChild(bodyEl);
   const overlay = document.getElementById('modal-overlay');
+  const card = overlay.querySelector('.modal-card');
+
+  // A previous modal's close animation may still be in flight (e.g. this
+  // one was opened immediately after closing another) — cancel it rather
+  // than letting its transitionend fire later and hide the modal we're
+  // opening right now out from under the person.
+  if (overlay._closeCleanup) {
+    overlay.removeEventListener('transitionend', overlay._closeCleanup);
+    overlay._closeCleanup = null;
+  }
+  overlay.classList.remove('modal-overlay-closing');
   overlay.hidden = false;
+
+  if (prefersReducedMotion()) {
+    overlay.style.opacity = '';
+  } else {
+    // The card's slide-up-and-fade is a plain CSS animation (see
+    // .modal-card in style.css), which only plays once per element
+    // unless explicitly restarted — the remove/reflow/re-add trick used
+    // elsewhere in this file (e.g. the kebab menus) so it replays on
+    // every open, not just the first.
+    if (card) {
+      card.style.animation = 'none';
+      void card.offsetWidth;
+      card.style.animation = '';
+    }
+    // The backdrop fade needs an actual "from" state to animate out of —
+    // clearing `hidden` alone would otherwise just snap it straight to
+    // its resting opacity:1 the instant it becomes visible. Setting 0 now
+    // and clearing it (back to that CSS resting value) on the next frame
+    // is what gives the transition something to animate across.
+    overlay.style.opacity = '0';
+    requestAnimationFrame(() => { overlay.style.opacity = ''; });
+  }
   initIcons(overlay);
 }
 
 function closeModal() {
-  document.getElementById('modal-overlay').hidden = true;
-  document.getElementById('modal-body').innerHTML = '';
+  const overlay = document.getElementById('modal-overlay');
+  if (overlay.hidden) return;
+
+  if (prefersReducedMotion()) {
+    overlay.hidden = true;
+    document.getElementById('modal-body').innerHTML = '';
+    return;
+  }
+
+  // .modal-overlay-closing plays the card's slide-down (see style.css)
+  // alongside this opacity fade, instead of the whole modal just
+  // disappearing the instant this function runs.
+  overlay.classList.add('modal-overlay-closing');
+  overlay.style.opacity = '0';
+  const cleanup = (e) => {
+    if (e && e.propertyName !== 'opacity') return;
+    overlay.removeEventListener('transitionend', cleanup);
+    overlay._closeCleanup = null;
+    overlay.hidden = true;
+    overlay.classList.remove('modal-overlay-closing');
+    overlay.style.opacity = '';
+    document.getElementById('modal-body').innerHTML = '';
+  };
+  overlay._closeCleanup = cleanup;
+  overlay.addEventListener('transitionend', cleanup);
 }
 
 function bindModalShell() {

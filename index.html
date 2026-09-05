@@ -297,7 +297,7 @@
     <div class="settings-row">
       <div class="settings-row-text">
         <span class="settings-row-title" id="t-darkModeTitle">Dark mode</span>
-        <span class="settings-row-sub" id="t-darkModeSub">Switch between light and dark themes</span>
+        <span class="settings-row-sub settings-desc-hideable" id="t-darkModeSub">Switch between light and dark themes</span>
       </div>
       <button id="theme-toggle" class="switch" role="switch" aria-checked="false" aria-label="Toggle dark mode">
         <span class="switch-knob"></span>
@@ -306,7 +306,7 @@
     <div class="settings-row">
       <div class="settings-row-text">
         <span class="settings-row-title" id="t-accentTitle">Accent color</span>
-        <span class="settings-row-sub" id="t-accentSub">Choose the app's accent color</span>
+        <span class="settings-row-sub settings-desc-hideable" id="t-accentSub">Choose the app's accent color</span>
       </div>
       <div class="accent-swatches" role="group" aria-label="Accent color">
         <button class="accent-swatch" data-accent="periwinkle" aria-pressed="true" aria-label="Periwinkle" style="background:#5B7FDE"></button>
@@ -320,7 +320,7 @@
     <div class="settings-row">
       <div class="settings-row-text">
         <span class="settings-row-title" id="t-chordStyleGroup">Chord style</span>
-        <span class="settings-row-sub" id="t-chordStyleSub">How chords are displayed above lyrics</span>
+        <span class="settings-row-sub settings-desc-hideable" id="t-chordStyleSub">How chords are displayed above lyrics</span>
       </div>
       <div class="seg-toggle" role="group" id="chord-style-toggle" aria-label="Chord display style">
         <div class="seg-toggle-thumb" aria-hidden="true"></div>
@@ -331,7 +331,7 @@
     <div class="settings-row">
       <div class="settings-row-text">
         <span class="settings-row-title" id="t-hideChordsTitle">Hide chords</span>
-        <span class="settings-row-sub" id="t-hideChordsSub">Show lyrics only, without chords</span>
+        <span class="settings-row-sub settings-desc-hideable" id="t-hideChordsSub">Show lyrics only, without chords</span>
       </div>
       <button id="hide-chords-toggle" class="switch" role="switch" aria-checked="false" aria-label="Hide chords">
         <span class="switch-knob"></span>
@@ -340,7 +340,7 @@
     <div class="settings-row">
       <div class="settings-row-text">
         <span class="settings-row-title" id="t-lyricsWeightTitle">Lyrics style</span>
-        <span class="settings-row-sub" id="t-lyricsWeightSub">Font weight for song lyrics</span>
+        <span class="settings-row-sub settings-desc-hideable" id="t-lyricsWeightSub">Font weight for song lyrics</span>
       </div>
       <div class="seg-toggle" role="group" id="lyrics-weight-toggle" aria-label="Lyrics font weight">
         <div class="seg-toggle-thumb" aria-hidden="true"></div>
@@ -352,7 +352,7 @@
     <div class="settings-row">
       <div class="settings-row-text">
         <span class="settings-row-title" id="t-lyricsSpacingTitle">Line spacing</span>
-        <span class="settings-row-sub" id="t-lyricsSpacingSub">Vertical spacing between lyric lines</span>
+        <span class="settings-row-sub settings-desc-hideable" id="t-lyricsSpacingSub">Vertical spacing between lyric lines</span>
       </div>
       <div class="seg-toggle" role="group" id="lyrics-spacing-toggle" aria-label="Lyric line spacing">
         <div class="seg-toggle-thumb" aria-hidden="true"></div>
@@ -368,14 +368,14 @@
     <div class="settings-row">
       <div class="settings-row-text">
         <span class="settings-row-title" id="t-uiLangTitle">App language</span>
-        <span class="settings-row-sub" id="t-uiLangSub">Choose the language for menus and buttons</span>
+        <span class="settings-row-sub settings-desc-hideable" id="t-uiLangSub">Choose the language for menus and buttons</span>
       </div>
       <select id="ui-lang-select" class="select-input"></select>
     </div>
     <div class="settings-row">
       <div class="settings-row-text">
         <span class="settings-row-title" id="t-dbTitle">Song database</span>
-        <span class="settings-row-sub" id="t-dbSub">Choose which songbook source to use</span>
+        <span class="settings-row-sub settings-desc-hideable" id="t-dbSub">Choose which songbook source to use</span>
       </div>
       <select id="db-select" class="select-input">
         <option value="mn">Монгол (Official)</option>
@@ -389,7 +389,7 @@
     <div class="settings-row">
       <div class="settings-row-text">
         <span class="settings-row-title" id="install-title">Install app</span>
-        <span class="settings-row-sub" id="install-sub">Add Next Gen Worship Beta to your home screen for offline, app-like access</span>
+        <span class="settings-row-sub settings-desc-hideable" id="install-sub">Add Next Gen Worship Beta to your home screen for offline, app-like access</span>
       </div>
       <button id="install-btn" class="btn-primary" hidden></button>
       <span id="installed-badge" class="installed-badge" hidden></span>
@@ -564,6 +564,15 @@
         <span class="settings-row-sub" id="t-devCreditsSub">Shows the Credits list on the About page</span>
       </div>
       <button id="dev-credits-toggle" class="switch" role="switch" aria-checked="false" aria-label="Show credits">
+        <span class="switch-knob"></span>
+      </button>
+    </div>
+    <div class="settings-row">
+      <div class="settings-row-text">
+        <span class="settings-row-title" id="t-devHideDescTitle">Hide setting descriptions</span>
+        <span class="settings-row-sub" id="t-devHideDescSub">Hides the description text under some settings rows</span>
+      </div>
+      <button id="dev-hide-desc-toggle" class="switch" role="switch" aria-checked="false" aria-label="Hide setting descriptions">
         <span class="switch-knob"></span>
       </button>
     </div>

@@ -25,7 +25,7 @@ window.SONGBOOK_LANG.mn2 = {
   // TODO: these three are placeholder Cyrillic, not transliterated to
   // traditional script yet — file is currently disabled/unloaded (see
   // service-worker.js and index.html), fix before re-enabling.
-  chordStyleGroup: "Аккордын хэлбэр",
+  chordStyleGroup: "Аккордын загвар",
   chordStyleSub: "Аккордыг үгийн дээр хэрхэн харуулах",
   chordStyleChip: "Дугтуй",
   chordStyleText: "Текст",
@@ -33,7 +33,7 @@ window.SONGBOOK_LANG.mn2 = {
   hideChordsSub: "Аккордгүйгээр зөвхөн үгийг харуулах",
   // TODO: these ten are placeholder Cyrillic too, same reason as the
   // chordStyle/hideChords block above — not yet transliterated.
-  lyricsWeightTitle: "Үгийн хэлбэр",
+  lyricsWeightTitle: "Үсгийн хэлбэр",
   lyricsWeightSub: "Дууны үгийн үсгийн зузаан",
   lyricsWeightNormal: "Энгийн",
   lyricsWeightSemibold: "Дунд зэрэг тод",
@@ -181,4 +181,6 @@ window.SONGBOOK_LANG.mn2 = {
   devTradMongolianSub: "Тохиргоо доторх хэлний жагсаалтад уламжлалт монгол бичгийн сонголтыг нэмнэ",
   devCreditsTitle: "Оролцогсдыг харуулах",
   devCreditsSub: "Хамтран Ажилласан хуудсанд Оролцсон хэсгийг харуулна",
+  devHideDescTitle: "Тохиргооны тайлбар нуух",
+  devHideDescSub: "Тохиргоо доторх зарим мөрийн доорх тайлбар бичвэрийг нуух",
 };

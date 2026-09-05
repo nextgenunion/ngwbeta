@@ -170,4 +170,6 @@ window.SONGBOOK_LANG.kr = {
   devTradMongolianSub: "몽골 문자 옵션을 엽니다.",
   devCreditsTitle: "크레딧 표시",
   devCreditsSub: "정보 페이지에 크레딧 목록을 표시합니다",
+  devHideDescTitle: "설정 설명 숨기기",
+  devHideDescSub: "일부 설정 항목 아래의 설명 텍스트를 숨깁니다",
 };

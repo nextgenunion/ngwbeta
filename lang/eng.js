@@ -174,4 +174,6 @@ window.SONGBOOK_LANG.en = {
   devTradMongolianSub: "Unlock the Mongolian script option.",
   devCreditsTitle: "Show credits",
   devCreditsSub: "Shows the Credits list on the About page",
+  devHideDescTitle: "Hide setting descriptions",
+  devHideDescSub: "Hides the description text under some settings rows",
 };
