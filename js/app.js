@@ -2020,7 +2020,6 @@ function renderSongList(opts = {}) {
       updateSongRowContent(li, song, hasNumbers, q);
     } else {
       li = buildSongRow(song, hasNumbers, q, sourceKey);
-      li.dataset.rowKey = key;
       li.classList.add('song-row-enter');
       li.addEventListener('animationend', function onEnd() {
         li.classList.remove('song-row-enter');
@@ -2054,6 +2053,7 @@ function renderSongList(opts = {}) {
 
 function buildSongRow(song, hasNumbers, q, sourceKey) {
   const li = document.createElement('li');
+  li.dataset.rowKey = `${sourceKey}:${song.id}`;
   const row = document.createElement('button');
   row.className = 'song-row';
   row.addEventListener('click', () => openSong(song, { sourceKey }));
