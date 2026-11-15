@@ -40,55 +40,17 @@ function markVersionSeen() {
   }
 }
 
-// --- Hard update backstop -------------------------------------------------
-// Everything above (scrollRestoration, controllerchange auto-reload,
-// updateViaCache) fixes the *normal* service-worker update path. This is a
-// second, independent line of defense that doesn't rely on any of that
-// machinery noticing anything: it runs the instant this script itself
-// executes, compares APP_VERSION against what's remembered from last time,
-// and if they don't match, wipes every service worker + cache directly and
-// forces one reload. So even if a device somehow never sees a normal SW
-// update (host-level caching quirks, timing races, whatever), the first
-// time it happens to load a genuinely fresh copy of this file, it will
-// self-heal rather than staying stuck on stale code indefinitely.
-//
-// The normal update paths (registerServiceWorker()'s controllerchange
-// listener, and the manual reloadApp() button) call markVersionSeen()
-// themselves just before they reload, specifically so this backstop sees
-// nothing to do on the load that follows. Without that, this ran a SECOND,
-// redundant reload after every single normal update — the mismatch here
-// used to only ever get cleared by this same block, so it could never tell
-// "a normal path just updated this" apart from "nothing ever has".
-//
-// This wipes EVERY cache bucket, including the separate offline-fallback
-// one (see OFFLINE_CACHE in service-worker.js) — deliberately: this path
-// only runs when something is stale/wrong enough to need a full reset, so
-// it shouldn't leave anything behind, offline.html included. The
-// reload this triggers re-registers the service worker, whose install
-// step repopulates OFFLINE_CACHE immediately after — the only real gap is
-// the reload itself failing while genuinely offline, which no caching
-// strategy can paper over.
-(function hardUpdateBackstop() {
+// Non-destructive update backstop. Never unregister the worker or delete
+// caches automatically: a connection drop during the next reload could leave
+// an installed PWA unable to launch. Normal SW installation is atomic.
+(function versionUpdateBackstop() {
   try {
     const seen = localStorage.getItem(SEEN_VERSION_KEY);
-    if (seen && seen !== APP_VERSION) {
-      localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION);
-      const wipe = [];
-      if ('serviceWorker' in navigator) {
-        wipe.push(navigator.serviceWorker.getRegistrations().then(regs => Promise.all(regs.map(r => r.unregister()))));
-      }
-      if ('caches' in window) {
-        wipe.push(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))));
-      }
-      Promise.all(wipe).catch(() => {}).finally(() => window.location.reload());
-      return;
-    }
     localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION);
-  } catch (e) {
-    // localStorage unavailable (e.g. private browsing edge cases) — the
-    // normal service-worker update path above still applies, just skip
-    // this extra backstop rather than letting it break anything.
-  }
+    if (seen && seen !== APP_VERSION && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then(reg => reg && reg.update()).catch(() => {});
+    }
+  } catch (_) { /* Normal registration still handles updates. */ }
 })();
 
 // Song sources: each is an independent collection of songs — its own list,
@@ -464,7 +426,31 @@ const DB_SOURCES = {
 // player) at all. allSettled loads everything that *does* work and just
 // warns about what doesn't, so one bad entry can't take down the rest.
 // ---------------------------------------------------------
+async function offlineSongSnapshot(sourceKey) {
+  const dbSource = DB_SOURCES[sourceKey];
+  if (!dbSource) throw new Error('unknown source');
+  // An existing IndexedDB backup may have newer individual-song corrections.
+  let backup = null;
+  try { backup = await loadSongsFromIndexedDb(sourceKey); } catch (_) {}
+  try {
+    const res = await fetch(`data/${dbSource.folder}/database.json`);
+    if (!res.ok) throw new Error(`offline song snapshot responded ${res.status}`);
+    const payload = await res.json();
+    if (!payload || !Array.isArray(payload.songs) || payload.songs.length !== payload.count) {
+      throw new Error('incomplete offline song snapshot');
+    }
+    return { songs: Array.isArray(backup) && backup.length >= payload.count ? backup : payload.songs, hadFailures: false };
+  } catch (err) {
+    if (Array.isArray(backup) && backup.length) return { songs: backup, hadFailures: false };
+    throw err;
+  }
+}
+
 async function fetchSongData(sourceKey, { forceRefresh = false } = {}) {
+  if (!forceRefresh && !navigator.onLine) {
+    try { return await offlineSongSnapshot(sourceKey); } catch (_) { /* Fall back to file fetch. */ }
+  }
+  try {
   const dbSource = DB_SOURCES[sourceKey];
   if (!dbSource) throw new Error(`unknown song source "${sourceKey}"`);
   const base = `data/${dbSource.folder}`;
@@ -499,7 +485,16 @@ async function fetchSongData(sourceKey, { forceRefresh = false } = {}) {
   // tell "a complete library" apart from "an incomplete one that still
   // technically succeeded" — e.g. reconnecting partway through a slow
   // download. See its use there for why that distinction matters.
+  if (failed.length && !forceRefresh) {
+    try { return await offlineSongSnapshot(sourceKey); } catch (_) { /* Keep partial results. */ }
+  }
   return { songs, hadFailures: failed.length > 0 };
+  } catch (err) {
+    if (!forceRefresh) {
+      try { return await offlineSongSnapshot(sourceKey); } catch (_) { /* Preserve IndexedDB fallback. */ }
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------
@@ -781,66 +776,26 @@ async function reloadSongLibrary() {
   }
 }
 
-// Manual "Reload app" button: a different, heavier reload than the song
-// database refresh above — this clears the offline app-shell cache and the
-// service worker entirely, then reloads the page, so it picks up a fresh
-// copy of everything (HTML/CSS/JS included), not just the song data. This
-// exists as an explicit, deliberate action the person has to tap, since the
-// browser's native swipe-down-to-reload gesture is disabled in this app
-// (accidental pull-to-refresh mid-scroll was closing songs/losing state).
+// Manual Reload App checks for a newer worker and reloads the installed
+// app safely. Never clear offline caches as part of an ordinary reload.
 async function reloadApp() {
   const btn = document.getElementById('reload-app-btn');
-  btn.disabled = true;
-  btn.textContent = t('reloadAppBtnBusy');
-
-  // Offline: unregistering the service worker and clearing every cache
-  // leaves nothing behind to serve the reload with — nothing can be
-  // re-downloaded without a connection. That combination used to be
-  // exactly what stranded people on a broken/blank reload while offline.
-  // Skip the destructive cleanup entirely here and just reload normally —
-  // the still-intact service worker and cache keep serving the app as-is,
-  // and the offline fallback page (see service-worker.js) covers it even
-  // if something's still missing.
-  if (!navigator.onLine) {
-    showToast(t('toastReloadAppOffline'));
-    btn.disabled = false;
-    btn.textContent = t('reloadAppBtn');
-    window.location.reload();
-    return;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = t('reloadAppBtnBusy');
   }
-
-  // This function's own reload (below) is the deliberate, complete fix —
-  // the fresh load it triggers will register a new service worker, which
-  // will then claim this page and fire 'controllerchange' again. Without
-  // these, two other independent update-detection paths would each see
-  // that fresh load as a separate, unrelated update and reload it AGAIN,
-  // right on top of this one: registerServiceWorker()'s controllerchange
-  // listener (suppressed for this one cycle via the sessionStorage flag),
-  // and hardUpdateBackstop() at the top of this file (suppressed by
-  // marking the version as seen before we go). See the comments on those
-  // two for the full picture.
-  try {
-    sessionStorage.setItem('ngw_skip_next_auto_reload', '1');
-  } catch (e) {
-    // sessionStorage unavailable — worst case is one extra (harmless,
-    // if annoying) reload; not worth failing the whole action over.
-  }
-  markVersionSeen();
-
-  try {
-    if ('serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(regs.map((r) => r.unregister()));
+  // Request a worker update when possible; never delete working offline data.
+  // The worker installs new files before replacing the current version.
+  if ('serviceWorker' in navigator && navigator.onLine) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) await reg.update();
+    } catch (err) {
+      console.warn('Songbook: optional update check failed —', err);
     }
-    if (window.caches) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k)));
-    }
-  } catch (err) {
-    console.error('Songbook: app reload cleanup failed —', err);
-  } finally {
-    window.location.reload();
   }
+  if (typeof markVersionSeen === 'function') markVersionSeen();
+  window.location.reload();
 }
 
 // ---------------------------------------------------------

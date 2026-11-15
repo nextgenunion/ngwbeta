@@ -1,3 +1,5 @@
+> **Offline reliability maintenance build v3.0.7:** Complete offline song snapshots, locally hosted fonts, atomic service-worker updates, and non-destructive reloads. See `OFFLINE_RELIABILITY.md` for release checks.
+
 # Next Gen Worship — Worship Song App (v3.0.4-beta — User Songs, Song Editor)
 
 An offline-first worship songbook PWA. Static HTML/CSS/JS, no build step, no

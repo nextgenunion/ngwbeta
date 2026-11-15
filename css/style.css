@@ -155,7 +155,7 @@ html[data-theme="dark"][data-accent="red"]        { --accent: #F0A3AF; --accent-
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: var(--paper);
+  background: #000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -174,10 +174,10 @@ html[data-theme="dark"][data-accent="red"]        { --accent: #F0A3AF; --accent-
      source image's real proportions are (square, portrait, landscape…). */
   width: auto;
   height: auto;
-  max-width: 120px;
-  max-height: 120px;
+  max-width: min(84vw, 320px);
+  max-height: min(38vh, 180px);
   object-fit: contain;
-  border-radius: var(--radius-l);
+  border-radius: 0;
   animation: splash-pop 1s cubic-bezier(0.34, 1.2, 0.64, 1);
 }
 @keyframes splash-pop {

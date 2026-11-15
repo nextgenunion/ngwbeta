@@ -27,18 +27,16 @@
 <meta name="theme-color" content="#F3F3F1" media="(prefers-color-scheme: light)">
 
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icons/app-icon.png">
-<link rel="apple-touch-icon" href="icons/app-icon.png">
+<link rel="icon" href="icons/app-icon-192.png">
+<link rel="apple-touch-icon" href="icons/app-icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <!-- Shorter name for the phone/desktop home-screen label -->
 <meta name="apple-mobile-web-app-title" content="NGWorship Beta">
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-
+<link rel="stylesheet" href="css/offline-fonts.css">
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/announcements.css">
 </head>
 <body>
 
@@ -643,5 +641,6 @@
 <script src="lang/kr.js"></script>
 <!-- Song data now loads at runtime from data/songs/ (see js/app.js loadSongData) -->
 <script src="js/app.js" defer></script>
+<script src="js/announcements.js" defer></script>
 </body>
 </html>

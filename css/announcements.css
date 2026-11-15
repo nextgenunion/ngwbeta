@@ -1,0 +1,27 @@
+/* Optional live notices. The songbook/navigation remain usable without any notice. */
+.ngw-announcements { position: fixed; z-index: 21; left: 0; right: 0;
+  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
+  max-height: 35vh; overflow-y: auto; width: 100%;
+  background: var(--surface); color: var(--ink);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  box-shadow: 0 -3px 12px rgba(0,0,0,.06);
+  padding: 8px var(--page-pad); }
+.ngw-announcements[hidden] { display: none; }
+.ngw-announcement { display: flex; gap: 10px; max-width: 720px; margin: 0 auto;
+  align-items: start; padding: 4px 0; }
+.ngw-announcement + .ngw-announcement { border-top: 1px solid var(--line); padding-top: 8px; }
+.ngw-announcement > div { flex: 1; min-width: 0; }
+.ngw-announcement h2, .ngw-announcement-messages h2 { margin: 0 0 4px; font-size: .9rem; }
+.ngw-announcement p, .ngw-announcement-messages p { margin: 0; font-size: .85rem;
+  line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+.ngw-announcement-dismiss { flex: 0 0 36px; width: 36px; height: 36px; border: 0;
+  color: var(--ink); background: transparent; border-radius: 50%; cursor: pointer; font-size: 1.4rem; }
+.ngw-announcement-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ngw-announcement-messages > div:not(.modal-actions) + div:not(.modal-actions) {
+  border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+.page:not(.page-no-bottom-nav) > .page-inner {
+  padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 40px + var(--ngw-announcement-space, 0px));
+}
+@media (prefers-reduced-motion: reduce) {
+  .ngw-announcements, .ngw-announcement { animation: none !important; transition: none !important; }
+}
